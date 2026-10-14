@@ -9,7 +9,7 @@ Run: pytest tests/unit/test_apps_registry.py -v -m unit
 import pytest
 
 from backend.base.system.core.apps import AppsCore
-from backend.base.system.apps_install.graph import (
+from backend.base.crm.apps_install.graph import (
     install_order,
     is_core,
     uninstall_order,

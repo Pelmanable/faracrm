@@ -11,7 +11,7 @@ No database.
 
 import pytest
 
-from backend.base.system.saved_filters.app import _migrate_like_expr
+from backend.base.crm.saved_filters.app import _migrate_like_expr
 
 pytestmark = pytest.mark.unit
 

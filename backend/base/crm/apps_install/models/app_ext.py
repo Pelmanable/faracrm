@@ -8,7 +8,7 @@ project_setup. С модулем это единственное состоян�
 """
 
 from backend.base.system.core.extensions import extend
-from backend.base.system.apps.models.apps import App
+from backend.base.crm.apps.models.apps import App
 from backend.base.system.dotorm.dotorm.fields import Boolean
 
 

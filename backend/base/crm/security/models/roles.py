@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .acls import AccessList
 from backend.base.crm.users.models.users import User
 from backend.base.system.core.enviroment import env
-from backend.base.system.apps.models.apps import App
+from backend.base.crm.apps.models.apps import App
 from backend.base.system.core.models.models import Model
 
 

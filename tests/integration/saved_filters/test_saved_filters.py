@@ -15,7 +15,7 @@ import pytest
 import json
 
 pytestmark = pytest.mark.integration
-from backend.base.system.saved_filters.models.saved_filter import (
+from backend.base.crm.saved_filters.models.saved_filter import (
     SavedFilter,
 )
 

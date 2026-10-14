@@ -116,7 +116,7 @@ class MarketplaceApp(App):
 
     async def _init_role(self, env: "Environment") -> int:
         """Роль marketplace_user — без наследования base_user."""
-        from backend.base.system.apps.models.apps import App as AppModel
+        from backend.base.crm.apps.models.apps import App as AppModel
         from backend.base.crm.security.models.roles import Role
 
         existing = await env.models.role.search_one(

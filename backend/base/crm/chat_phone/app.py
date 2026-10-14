@@ -105,7 +105,7 @@ class ChatPhoneApp(App):
 
     async def _init_call_period_filters(self, env: "Environment"):
         """Создать фильтры периода для «Звонков» (идемпотентно)."""
-        from backend.base.system.saved_filters.models.saved_filter import (
+        from backend.base.crm.saved_filters.models.saved_filter import (
             SavedFilter,
         )
 

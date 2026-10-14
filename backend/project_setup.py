@@ -31,7 +31,7 @@ from backend.base.system.cron.models.cron_job import CronJob
 from backend.base.crm.languages.models.language import Language
 from backend.base.crm.users.models.users import User
 from backend.base.crm.security.models.acls import AccessList
-from backend.base.system.apps.models.apps import App as AppModel
+from backend.base.crm.apps.models.apps import App as AppModel
 from backend.base.system.core.models.models import Model
 from backend.base.crm.security.models.roles import Role
 from backend.base.crm.security.models.rules import Rule
@@ -54,12 +54,12 @@ from backend.base.crm.attachments.models.attachments_cache import (
     AttachmentCache,
 )
 
-from backend.base.system.saved_filters.models.saved_filter import SavedFilter
-from backend.base.system.view_settings.models.column_setting import (
+from backend.base.crm.saved_filters.models.saved_filter import SavedFilter
+from backend.base.crm.view_settings.models.column_setting import (
     ColumnSetting,
 )
-from backend.base.system.studio.models.form_setting import FormSetting
-from backend.base.system.studio.models.studio_field import StudioField
+from backend.base.crm.studio.models.form_setting import FormSetting
+from backend.base.crm.studio.models.studio_field import StudioField
 from backend.base.crm.sales.models.sale import Sale
 from backend.base.crm.sales.models.sale_line import SaleLine
 from backend.base.crm.partners.models.contact import Contact
@@ -135,7 +135,7 @@ from backend.base.crm.contract.models.requisites_ext import RequisitesMixin
 from backend.base.crm.contract.models.sale_ext import SaleContractMixin
 
 # @extend(App): флаг «установлено» у строки реестра приложений
-from backend.base.system.apps_install.models.app_ext import (  # noqa: F401
+from backend.base.crm.apps_install.models.app_ext import (  # noqa: F401
     AppInstalled,
 )
 
@@ -267,10 +267,10 @@ from backend.base.system.cron.app import CronApp
 from backend.base.crm.languages.app import LanguageApp
 from backend.base.crm.auth_token.app import AuthTokenApp
 from backend.base.system.administration.app import AdministrationApp
-from backend.base.system.apps.app import AppsApp
-from backend.base.system.saved_filters.app import SavedFiltersApp
-from backend.base.system.view_settings.app import ViewSettingsApp
-from backend.base.system.studio.app import StudioApp
+from backend.base.crm.apps.app import AppsApp
+from backend.base.crm.saved_filters.app import SavedFiltersApp
+from backend.base.crm.view_settings.app import ViewSettingsApp
+from backend.base.crm.studio.app import StudioApp
 from backend.base.crm.users.app import UserApp
 from backend.base.crm.security.app import SecurityApp
 from backend.base.crm.attachments.app import AttachmentsApp
@@ -308,12 +308,12 @@ from backend.base.crm.captcha.app import CaptchaApp
 from backend.base.crm.payment.app import PaymentApp
 from backend.base.crm.payment_tinkoff.app import PaymentTinkoffApp
 from backend.base.crm.marketplace.app import MarketplaceApp
-from backend.base.system.excel.app import ExcelApp
+from backend.base.crm.excel.app import ExcelApp
 
 # services
 from backend.base.system.logger.app import LoggerService
 from backend.base.system.bus.app import BusService
-from backend.base.system.apps_install.app import AppsInstallService
+from backend.base.crm.apps_install.app import AppsInstallService
 from backend.base.system.swagger_offlain.app import SwaggerOfflainService
 from backend.base.system.docs_developer.app import DocsApp
 from backend.base.system.dotorm_databases_postgres.app import (

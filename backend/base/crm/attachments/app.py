@@ -75,7 +75,7 @@ class AttachmentsApp(App):
         для всех пользователей.
         """
         import json
-        from backend.base.system.saved_filters.models.saved_filter import (
+        from backend.base.crm.saved_filters.models.saved_filter import (
             SavedFilter,
         )
 

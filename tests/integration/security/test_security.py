@@ -25,7 +25,7 @@ from backend.base.system.core.models.models import Model
 from backend.base.crm.security.models.acls import AccessList
 from backend.base.crm.security.models.rules import Rule
 from backend.base.crm.security.models.sessions import Session
-from backend.base.system.apps.models.apps import App
+from backend.base.crm.apps.models.apps import App
 from backend.base.crm.users.models.users import User
 
 
