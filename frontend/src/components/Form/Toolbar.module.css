@@ -1,0 +1,72 @@
+/* Тулбар формы — четыре блока:
+   nav    — «К списку», пейджер, «Сохранить»;
+   base   — кнопки ядра: панели (активности, заметки, вложения…) и печать;
+   custom — кнопки формы (actions) и модулей ('inside:Toolbar');
+   views  — переключатель вида.
+   Широкий: одна строка, nav слева, остальное справа.
+   Узкий (контейнер формы уже 768px = Mantine sm: телефон или открытая
+   боковая панель): «nav … views», под ними base, ниже custom — обе
+   строки у правого края.
+   Container query, а не медиазапрос: важна ширина формы, а не окна. */
+
+.toolbar {
+  container-type: inline-size;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Без nav (попап) правые блоки остаются у правого края */
+  justify-content: flex-end;
+  gap: var(--mantine-spacing-xs);
+  min-height: 50px;
+  padding: 0 var(--mantine-spacing-xs);
+}
+
+.nav,
+.base,
+.custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
+.nav {
+  flex-wrap: nowrap;
+  /* Прижимает остальные блоки вправо */
+  margin-right: auto;
+}
+
+/* Блок без кнопок (новая запись, нет прав) не занимает места и не даёт
+   лишнего отступа */
+.nav:empty,
+.base:empty,
+.custom:empty {
+  display: none;
+}
+
+@container (max-width: 767px) {
+  .bar {
+    min-height: 44px;
+    padding-block: var(--mantine-spacing-xs);
+  }
+
+  .views {
+    order: 1;
+  }
+
+  /* Строки кнопок — у правого края: под большой палец на телефоне */
+  .base {
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .custom {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}

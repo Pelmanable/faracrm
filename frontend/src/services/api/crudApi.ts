@@ -9,6 +9,7 @@ import {
   EditParams,
   EditResult,
   FaraRecord,
+  FilterExpression,
   GetListM2mParams,
   GetListParams,
   GetListResult,
@@ -69,6 +70,26 @@ export const crudApi = createApi({
       // forceRefetch: () => true,
       // serializeQueryArgs: ({ endpointName, queryArgs }) =>
       //   `${endpointName}-${queryArgs?.model}`,
+    }),
+
+    /**
+     * Число записей модели по фильтру (total того же search) — счётчики
+     * кнопок связанных записей. Фоновый: без прав на модель отказ не
+     * всплывает модалкой, кнопка просто не рисуется.
+     */
+    searchCount: build.query<
+      number,
+      { model: string; filter: FilterExpression }
+    >({
+      query: ({ model, filter }) => ({
+        method: 'POST',
+        url: `${AUTO}/${model}/search`,
+        body: { filter, fields: ['id'], limit: 1 },
+      }),
+      transformResponse: (response: GetListResult<FaraRecord>) =>
+        Number(response.total),
+      extraOptions: { silent: true },
+      providesTags: (_result, _error, arg) => [{ type: arg.model, id: 'LIST' }],
     }),
 
     searchMany2many: build.query<GetListResult<FaraRecord>, GetListM2mParams>({
@@ -432,6 +453,7 @@ export interface FieldInfoResponse {
 export const {
   useLazySearchQuery,
   useSearchQuery,
+  useSearchCountQuery,
   // useGetAttachmentQuery,
   useSearchMany2manyQuery,
   useDeleteBulkMutation,

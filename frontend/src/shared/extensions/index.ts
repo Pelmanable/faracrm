@@ -12,6 +12,8 @@ import type { FaraRecord } from '@/services/api/crudTypes';
  * - 'before:FormTabs'            — секция над блоком вкладок
  * - 'after:FormTabs'             — секция под блоком вкладок
  * - 'after:FormSheet'            — секция под основным блоком FormSheet
+ * - 'inside:Toolbar'             — кнопки в тулбаре формы перед
+ *                                  переключателем вида (RelatedRecordsButton)
  * - 'before:KanbanCard'          — над стандартным содержимым карточки канбана
  * - 'after:KanbanCard'           — под ним (прогресс-бар, доп. строки и т.п.)
  * - 'replace:KanbanCard'         — вместо него целиком
@@ -288,7 +290,8 @@ export const ExtensionsContext = createContext<string | null>(null);
 
 /**
  * Хук для получения расширений по позиции (точное совпадение) — для позиций
- * без параметра: 'after:FormSheet', 'before:FormTabs', 'after:FormTabs'.
+ * без параметра: 'after:FormSheet', 'before:FormTabs', 'after:FormTabs',
+ * 'inside:Toolbar'.
  * Для контента вкладок — useTabExtensions.
  */
 export function useExtensions(position: string): ComponentType<any>[] {

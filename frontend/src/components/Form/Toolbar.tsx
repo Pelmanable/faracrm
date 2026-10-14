@@ -1,4 +1,4 @@
-import { Flex, Group, Text, ThemeIcon } from '@mantine/core';
+import { Group, Text, ThemeIcon } from '@mantine/core';
 import { FaraRecord } from '@/services/api/crudTypes';
 import { ButtonUpdate } from './ButtonUpdate';
 import { ButtonCreate } from './ButtonCreate';
@@ -15,6 +15,8 @@ import { FormPanelsBadges, PanelType } from './Panels';
 import { IconCheck } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { PrintButton } from './PrintButton';
+import { useExtensions } from '@/shared/extensions';
+import classes from './Toolbar.module.css';
 
 export const Toolbar = ({
   model,
@@ -89,89 +91,96 @@ export const Toolbar = ({
   const showPanels =
     !isCreateForm && id && !modalClose && !parentForm && onTogglePanel;
 
+  // Кнопки модулей ('inside:Toolbar', напр. «Заказы» и «Лиды» у партнёра)
+  // уводят в другой список — только у самостоятельной сохранённой записи
+  const moduleButtons = useExtensions('inside:Toolbar');
+  const showModuleButtons = !isCreateForm && id && showViewSwitcher;
+
+  // Раскладка блоков nav / base / custom / views — Toolbar.module.css
   return (
-    <Flex
-      mih={{ base: 44, sm: 50 }}
-      gap="xs"
-      justify="space-between"
-      align="center"
-      direction="row"
-      wrap="nowrap"
-      px="xs">
-      <Group gap="xs">
-        {/* Навигация по записям: «К списку» и пейджер по выборке, из
+    <div className={classes.toolbar}>
+      <div className={classes.bar}>
+        <div className={classes.nav}>
+          {/* Навигация по записям: «К списку» и пейджер по выборке, из
             которой открыта форма (без контекста пейджер не рендерится).
             Только у самостоятельной формы — не в попапе и не во вложенной. */}
-        {showViewSwitcher && (
-          <>
-            <BackToListButton model={model} />
-            <RecordPager />
-          </>
-        )}
+          {showViewSwitcher && (
+            <>
+              <BackToListButton model={model} />
+              <RecordPager />
+            </>
+          )}
 
-        {form.isDirty() ? (
-          !!isCreateForm ? (
-            <ButtonCreate
-              model={model}
-              parentFieldName={parentFieldName}
-              parentForm={parentForm}
-              modalClose={modalClose}
-              parentId={parentId}
-              relatedFieldO2M={relatedFieldO2M}
-              onCreated={onCreated}
-            />
-          ) : (
-            !!id && (
-              <ButtonUpdate
+          {form.isDirty() ? (
+            !!isCreateForm ? (
+              <ButtonCreate
                 model={model}
-                id={id}
-                // fields={fieldsClient}
+                parentFieldName={parentFieldName}
+                parentForm={parentForm}
+                modalClose={modalClose}
                 parentId={parentId}
                 relatedFieldO2M={relatedFieldO2M}
-                onSaveSuccess={handleSaveSuccess}
+                onCreated={onCreated}
               />
+            ) : (
+              !!id && (
+                <ButtonUpdate
+                  model={model}
+                  id={id}
+                  // fields={fieldsClient}
+                  parentId={parentId}
+                  relatedFieldO2M={relatedFieldO2M}
+                  onSaveSuccess={handleSaveSuccess}
+                />
+              )
             )
-          )
-        ) : (
-          showSaved && (
-            <Group gap={4}>
-              <ThemeIcon size="xs" color="green" variant="light">
-                <IconCheck size={12} />
-              </ThemeIcon>
-              <Text size="sm" c="green">
-                {t('saved')}
-              </Text>
-            </Group>
-          )
-        )}
-      </Group>
+          ) : (
+            showSaved && (
+              <Group gap={4}>
+                <ThemeIcon size="xs" color="green" variant="light">
+                  <IconCheck size={12} />
+                </ThemeIcon>
+                <Text size="sm" c="green">
+                  {t('saved')}
+                </Text>
+              </Group>
+            )
+          )}
+        </div>
 
-      <Group gap="xs">
-        {/* Полиморфные панели: иконки-бейджи */}
-        {showPanels && (
-          <FormPanelsBadges
-            resModel={model}
-            resId={Number(id)}
-            activePanel={activePanel!}
-            onToggle={onTogglePanel!}
-          />
-        )}
+        <div className={classes.base}>
+          {/* Полиморфные панели: иконки-бейджи */}
+          {showPanels && (
+            <FormPanelsBadges
+              resModel={model}
+              resId={Number(id)}
+              activePanel={activePanel!}
+              onToggle={onTogglePanel!}
+            />
+          )}
 
-        {/* «Печать» — у любой сохранённой записи; что печатать, подсказывают
-            модули (registerPrintProvider), без пунктов кнопки нет */}
-        {!isCreateForm && id && <PrintButton model={model} recordId={id} />}
+          {/* «Печать» — у любой сохранённой записи; что печатать, подсказывают
+              модули (registerPrintProvider), без пунктов кнопки нет */}
+          {!isCreateForm && id && <PrintButton model={model} recordId={id} />}
+        </div>
 
-        {/* Custom actions from individual forms */}
-        {!isCreateForm && id && actions}
+        <div className={classes.custom}>
+          {/* Custom actions from individual forms */}
+          {!isCreateForm && id && actions}
+
+          {showModuleButtons && moduleButtons.map((Ext, i) => <Ext key={i} />)}
+        </div>
 
         {showViewSwitcher && (
-          <ViewSwitcher
-            value="form"
-            onChange={handleViewChange}
-            availableViews={availableViews}
-          />
+          <div className={classes.views}>
+            <ViewSwitcher
+              value="form"
+              onChange={handleViewChange}
+              availableViews={availableViews}
+            />
+          </div>
         )}
-      </Group>
-    </Flex>
+      </div>
+    </div>
   );
 };

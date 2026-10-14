@@ -32,6 +32,7 @@ frontend/src/business/
 |---|---|
 | `before:FormTabs`, `after:FormTabs` | Above and below the tabs block |
 | `after:FormSheet` | Below the main `FormSheet` block |
+| `inside:Toolbar` | Buttons in the form toolbar before the view switcher — for a saved record opened outside a popup. `RelatedRecordsButton` from `components/Form` shows the number of related records and opens their filtered list on click — this is how `fara_sales` and `fara_leads` add "Orders" and "Leads" to the partner form. Without access to the related model the button is not rendered |
 | `before:FormTab:<name>`, `after:FormTab:<name>` | At the start and at the end of the `<name>` tab content |
 | `replace:FormTab:<name>` | Instead of the tab content; the last registered wins |
 | `before:KanbanCard`, `after:KanbanCard`, `replace:KanbanCard` | Kanban card; the component receives `{ record, model }` |

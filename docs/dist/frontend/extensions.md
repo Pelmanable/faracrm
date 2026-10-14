@@ -32,6 +32,7 @@ frontend/src/business/
 |---|---|
 | `before:FormTabs`, `after:FormTabs` | Над блоком вкладок и под ним |
 | `after:FormSheet` | Под основным блоком `FormSheet` |
+| `inside:Toolbar` | Кнопки в тулбаре формы перед переключателем вида — у сохранённой записи, открытой не в попапе. `RelatedRecordsButton` из `components/Form` показывает число связанных записей и по клику открывает их список с фильтром — так `fara_sales` и `fara_leads` ставят партнёру «Заказы» и «Лиды». Без прав на связанную модель кнопка не рисуется |
 | `before:FormTab:<name>`, `after:FormTab:<name>` | В начале и в конце контента вкладки `<name>` |
 | `replace:FormTab:<name>` | Вместо контента вкладки, последний зарегистрированный выигрывает |
 | `before:KanbanCard`, `after:KanbanCard`, `replace:KanbanCard` | Карточка канбана, компонент получает `{ record, model }` |
