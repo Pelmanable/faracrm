@@ -69,7 +69,7 @@ ID записи. Не FK на конкретную таблицу — связь
 <div class="field" markdown>
 `user_id` <span class="field-type">Many2one&lt;User&gt;</span> <span class="field-flag">required</span> <span class="field-flag">indexed</span>
 
-Кому назначена. Default — текущий пользователь из сессии.
+Кому назначена. Default — текущий пользователь из сессии. Назначить другому может только роль `activity_manager` («Активности: назначать другим», `role_create`/`role_update`): без неё переданный `user_id` отклоняется (403), поле не передают — активность ложится на себя. В API поле необязательно (`schema_required=False`). В панели активностей формы выбор «Ответственный» виден только с этой ролью.
 </div>
 
 <div class="field" markdown>

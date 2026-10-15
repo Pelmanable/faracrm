@@ -21,6 +21,7 @@ import {
   IconCalendar,
   IconUser,
 } from '@tabler/icons-react';
+import { useDebouncedValue } from '@mantine/hooks';
 import { useTranslation } from 'react-i18next';
 import {
   useSearchQuery,
@@ -29,6 +30,11 @@ import {
 } from '@/services/api/crudApi';
 import { useSelector } from 'react-redux';
 import { selectCurrentSession } from '@/slices/authSlice';
+
+interface UserOption {
+  id: number;
+  name: string;
+}
 
 const PAGE_SIZE = 80;
 
@@ -48,7 +54,14 @@ const STATE_COLORS: Record<string, string> = {
 export function ActivityPanel({ resModel, resId }: ActivityPanelProps) {
   const { t } = useTranslation(['activity', 'common']);
   const session = useSelector(selectCurrentSession);
-  const currentUserId = session?.user_id?.id;
+  const currentUser = session?.user_id;
+  // Назначать другим — роль activity_manager (как role_create у
+  // Activity.user_id на бэке) или суперпользователь.
+  const canAssign =
+    !!currentUser?.is_admin ||
+    (currentUser?.role_ids ?? []).some(
+      role => role.code === 'activity_manager',
+    );
 
   const [showCreate, setShowCreate] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -123,7 +136,8 @@ export function ActivityPanel({ resModel, resId }: ActivityPanelProps) {
         <CreateActivityForm
           resModel={resModel}
           resId={resId}
-          currentUserId={currentUserId}
+          currentUser={currentUser}
+          canAssign={canAssign}
           onClose={() => setShowCreate(false)}
         />
       )}
@@ -240,17 +254,66 @@ function ActivityItem({
   );
 }
 
+// ─── Assignee select ──────────────────────────────────────────
+
+/** Кому назначить: пользователи, поиск по имени на сервере. */
+function AssigneeSelect({
+  value,
+  onChange,
+}: {
+  value: UserOption;
+  onChange: (user: UserOption) => void;
+}) {
+  const { t } = useTranslation('activity');
+  const [search, setSearch] = useState(value.name);
+  const [query] = useDebouncedValue(search.trim(), 300);
+
+  // Пока в поле подпись выбранного — без фильтра, весь список.
+  const { data } = useSearchQuery({
+    model: 'users',
+    fields: ['id', 'name'],
+    filter:
+      query && query !== value.name ? [['name', 'ilike', query]] : undefined,
+    limit: 50,
+    sort: 'name',
+  });
+
+  // Выбранный — в списке всегда, иначе Select не покажет его подпись.
+  const users = (data?.data ?? []) as UserOption[];
+  const options = [value, ...users.filter(user => user.id !== value.id)].map(
+    user => ({ value: String(user.id), label: user.name }),
+  );
+
+  return (
+    <Select
+      size="xs"
+      searchable
+      allowDeselect={false}
+      data={options}
+      value={String(value.id)}
+      searchValue={search}
+      onSearchChange={setSearch}
+      onChange={(id, option) => {
+        if (id) onChange({ id: Number(id), name: option.label });
+      }}
+      label={t('fields.user_id')}
+    />
+  );
+}
+
 // ─── Create activity form ─────────────────────────────────────
 
 function CreateActivityForm({
   resModel,
   resId,
-  currentUserId,
+  currentUser,
+  canAssign,
   onClose,
 }: {
   resModel: string;
   resId: number;
-  currentUserId?: number;
+  currentUser?: UserOption;
+  canAssign: boolean;
   onClose: () => void;
 }) {
   const { t } = useTranslation(['activity', 'common']);
@@ -278,6 +341,7 @@ function CreateActivityForm({
   const [summary, setSummary] = useState('');
   const [dateDeadline, setDateDeadline] = useState<Date | null>(null);
   const [note, setNote] = useState('');
+  const [assignee, setAssignee] = useState(currentUser);
 
   useEffect(() => {
     if (typeOptions.length > 0 && !activityTypeId) {
@@ -317,8 +381,10 @@ function CreateActivityForm({
           res_model: resModel,
           res_id: resId,
           activity_type_id: Number(activityTypeId),
-          user_id: currentUserId,
-          create_user_id: currentUserId,
+          // Без роли user_id не шлём: бэк назначит на текущего
+          // пользователя, а переданное поле отклонил бы (403).
+          ...(canAssign && assignee && { user_id: assignee.id }),
+          create_user_id: currentUser?.id,
           summary: summary || null,
           note: note || null,
           date_deadline: new Date(dateDeadline).toISOString(),
@@ -360,6 +426,10 @@ function CreateActivityForm({
           onChange={handleTypeChange}
           label={t('activity:fields.activity_type_id')}
         />
+
+        {canAssign && assignee && (
+          <AssigneeSelect value={assignee} onChange={setAssignee} />
+        )}
 
         <TextInput
           size="xs"

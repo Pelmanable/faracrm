@@ -6,6 +6,7 @@ if TYPE_CHECKING:
 
 from backend.base.system.core.app import App
 from backend.base.crm.security.acl_post_init_mixin import ACL
+from backend.base.crm.security.utils import init_module_roles
 from backend.base.system.cron.models.cron_job import CronJob
 from .models.activity_type import ActivityType, INITIAL_ACTIVITY_TYPES
 
@@ -46,8 +47,18 @@ class ActivityApp(App):
     }
 
     async def post_init(self, app: "FastAPI"):
-        await super().post_init(app)
         env: "Environment" = app.state.env
+
+        # Назначать активности другим (Activity.user_id, role_create /
+        # role_update); без роли — только себе. Роли — до super().post_init(),
+        # как в leads.
+        await init_module_roles(
+            env,
+            "activity",
+            [("activity_manager", "Активности: назначать другим")],
+        )
+
+        await super().post_init(app)
 
         # Начальные типы активностей
         for type_data in INITIAL_ACTIVITY_TYPES:

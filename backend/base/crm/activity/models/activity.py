@@ -85,13 +85,20 @@ class Activity(AuditMixin, DotModel):
         description="Дата завершения",
     )
 
-    # Назначение
+    # Назначение. Себе — любой: поле не передают, дефолт — текущий
+    # пользователь. Другому — только с ролью activity_manager, иначе любой
+    # сотрудник засыпал бы коллег уведомлениями; без роли переданный
+    # user_id отклоняет field-level проверка (403).
     user_id: "User" = Many2one(
         relation_table=lambda: env.models.user,
         required=True,
+        # В API необязательно: без роли поле не передают вовсе.
+        schema_required=False,
         index=True,
         description="Кому назначено",
         default=_default_current_user,
+        role_create="activity_manager",
+        role_update="activity_manager",
         # default=lambda: (
         #     s.user_id.json() if (s := get_access_session()) else None
         # ),

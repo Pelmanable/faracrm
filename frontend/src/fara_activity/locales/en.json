@@ -7,6 +7,8 @@
   "markAllRead": "Mark all read",
   "noNotifications": "No notifications",
   "viewAll": "View all activities",
+  "scheduleActivity": "Schedule activity",
+  "summaryPlaceholder": "E.g. call the customer back",
   "fields": {
     "name": "Name",
     "summary": "Summary",

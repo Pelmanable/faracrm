@@ -35,14 +35,15 @@ function escapeRegExp(text: string): string {
  * URL: /chat — раздел «Сотрудники» (внутренние чаты), /chat?section=clients…
  */
 export class ChatPage {
-  readonly newChatButton: Locator;
+  readonly listMenuButton: Locator;
   readonly messageInput: Locator;
   readonly sendButton: Locator;
   readonly messagesContainer: Locator;
 
   constructor(private page: Page) {
-    // Английский заголовок — как в fara_chat/locales/en.json ("New Chat").
-    this.newChatButton = page.locator('[title="Новый чат"], [title="New Chat"]').first();
+    // «⋮» справа от поиска списка чатов: в её меню «Новый чат», «Прочитать
+    // все» и переключатели «Настроек списка» (отдельных кнопок больше нет).
+    this.listMenuButton = page.getByTitle(/^(меню|menu)$/i);
     this.messageInput = page.getByPlaceholder(/введите сообщение|type.*message/i).first();
     this.sendButton = page.locator(
       'button[class*="send"], [class*="ChatInput"] button[type="submit"]',
@@ -155,7 +156,10 @@ export class ChatPage {
   // ==================== Создание чата ====================
 
   async createGroupChat(name: string, memberNames: string[] = []) {
-    await this.newChatButton.click();
+    await this.listMenuButton.click();
+    await this.page
+      .getByRole('menuitem', { name: /^(новый чат|new chat)$/i })
+      .click();
 
     // Ждём появления модалки. Используем role="dialog" вместо поиска по
     // заголовку — устойчивее к изменениям перевода и UI.
@@ -277,9 +281,7 @@ export class ChatPage {
    * суперпользователя). Между загрузками страницы не хранится.
    */
   async showForeignChats() {
-    await this.page
-      .getByTitle(/^(настройки списка|list settings)$/i)
-      .click();
+    await this.listMenuButton.click();
     await this.setSwitch(
       this.page.getByRole('switch', {
         name: /показывать чужие чаты|show others' chats/i,

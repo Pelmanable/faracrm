@@ -7,6 +7,8 @@
   "markAllRead": "Прочитать все",
   "noNotifications": "Нет уведомлений",
   "viewAll": "Показать все активности",
+  "scheduleActivity": "Запланировать активность",
+  "summaryPlaceholder": "Например: перезвонить клиенту",
   "fields": {
     "id": "Ид",
     "name": "Название",
