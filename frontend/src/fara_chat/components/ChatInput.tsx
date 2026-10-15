@@ -473,7 +473,9 @@ export function ChatInput({
               disabled={disabled}
             />
           </Box>
-        ) : (
+        ) : pendingVoice ? null : (
+          // Пока голосовое ждёт отправки, поля нет: уйдёт только запись, а на
+          // мобильном плееру и кнопке «Отправить» нужна вся строка (#40).
           <TextInput
             ref={inputRef}
             className={styles.input}
