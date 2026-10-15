@@ -144,15 +144,22 @@ class Attachment(AuditMixin, DotModel):
         help="Route used to organize file in folders",
     )
 
+    # role_create/role_update на storage_file_id/storage_parent_id/
+    # storage_file_url: где лежит файл, решает только сервер — иначе клиент
+    # указал бы чужой путь на диске или чужой файл в облаке и скачал его.
     storage_file_id: str | None = Char(
         string="Storage file ID",
         help="File ID in cloud storage (Google Drive ID, etc.)",
+        role_create="system_admin",
+        role_update="system_admin",
     )
 
     storage_parent_id: str = Char(
         string="Storage parent ID",
         help="Parent folder ID in cloud storage",
         required=False,
+        role_create="system_admin",
+        role_update="system_admin",
     )
 
     storage_parent_name: str | None = Char(
@@ -163,6 +170,8 @@ class Attachment(AuditMixin, DotModel):
     storage_file_url: str | None = Char(
         string="Storage file URL",
         help="URL or path to the file. Used for preview and edit.",
+        role_create="system_admin",
+        role_update="system_admin",
     )
 
     is_voice: bool = Boolean(
@@ -504,7 +513,6 @@ class Attachment(AuditMixin, DotModel):
                 continue
 
             payload.storage_id = storage
-            payload.storage_parent_id = parent_id
             payload.storage_parent_name = parent_name
             if route:
                 payload.route_id = route
@@ -573,8 +581,9 @@ class Attachment(AuditMixin, DotModel):
         )
         payload.storage_file_url = result.get("storage_file_url")
         payload.storage_file_id = result.get("storage_file_id")
-        if result.get("storage_parent_id"):
-            payload.storage_parent_id = result["storage_parent_id"]
+        payload.storage_parent_id = (
+            result.get("storage_parent_id") or parent_id
+        )
         if result.get("storage_parent_name"):
             payload.storage_parent_name = result["storage_parent_name"]
 
