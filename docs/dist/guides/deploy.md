@@ -13,7 +13,7 @@ cd /opt/faracrm
 
 # 2. Настраиваем окружение основного стека
 cp .env.sample .env
-nano .env       # DOMAIN, POSTGRES_PASSWORD, SECRET_KEY
+nano .env       # DOMAIN, SECRET_KEY, пароль базы (dotorm_databases_postgres__fara__password)
 
 # 3. Поднимаем основной стек (backend, frontend, postgres, cron)
 docker compose up -d
@@ -227,7 +227,9 @@ cd /opt/faracrm
 docker compose down
 
 # 2. Снести volumes — БД и filestore исчезнут
-docker volume rm faracrm_pgdata faracrm_filestore_docker
+#    faracrm_pgdata — старый том PostgreSQL 17: если оставить его, следующий
+#    `up` перенесёт из него данные заново (см. «Переход на PostgreSQL 18»)
+docker volume rm faracrm_pgdata18 faracrm_pgdata faracrm_filestore_docker
 
 # 3. Пересобрать (если меняли код)
 docker compose build --no-cache
@@ -271,6 +273,73 @@ docker compose up
 
 
 Frontend Vite билдится в production-режиме внутри Docker-образа на этапе сборки — `npm run build` уже зашит в Dockerfile. После rebuilt'а статика подменяется автоматически.
+
+## Пользователь и пароль базы
+
+Пользователь и пароль PostgreSQL задаются в `.env` теми же строками, по которым подключается backend:
+
+```bash
+dotorm_databases_postgres__fara__user="openpg"
+dotorm_databases_postgres__fara__password="сложный-пароль"
+```
+
+Если строк нет, используются `openpg` / `openpgpwd`. Имена — строчными, как в `.env.sample`: compose ищет точное совпадение.
+
+!!! warning "Только до первого запуска"
+    Postgres создаёт пользователя с этим паролем **только при первом старте на пустом томе**. Если база уже создана, правка `.env` её не меняет — backend просто перестанет подключаться. Имя пользователя после первого старта не меняйте, а пароль работающей базы меняйте так:
+
+    ```bash
+    docker compose exec postgres psql -U openpg -d fara -c "ALTER ROLE openpg PASSWORD 'новый-пароль'"
+    # затем тот же пароль — в dotorm_databases_postgres__fara__password в .env
+    docker compose up -d
+    ```
+
+## Переход на PostgreSQL 18
+
+Стек работает на `postgres:18`. Если сервер поднимался на `postgres:17`, данные переносятся сами при обычном обновлении:
+
+```bash
+cd /opt/faracrm
+git pull
+docker compose build
+docker compose down     # обязательно: старый postgres должен быть остановлен
+docker compose up -d
+docker compose logs -f pg17-backup pg18-restore
+```
+
+Что происходит при `up`:
+
+1. **`pg17-backup`** (образ `postgres:17`) поднимает старый кластер из тома `pgdata` без сети и снимает дамп в `backups/postgres/pg17-<дата>/`: `globals.sql` — роли и пароли, `fara.dump` — база в формате `pg_dump -Fc`.
+2. **`pg18-restore`** (образ `postgres:18`) создаёт новый кластер в томе `pgdata18` и заливает в него дамп. Кластер собирается во временном каталоге и становится рабочим только после успешной заливки — postgres никогда не стартует на половине данных.
+3. **`postgres`** стартует на `pgdata18` как обычно.
+
+На свежей установке и после перехода оба шага завершаются за секунду. Старый том `pgdata` не меняется.
+
+Нужно свободное место примерно на 2,5–3 размера базы: старый том + дамп + новый том. Простой — пока идут дамп и заливка, для CRM на несколько гигабайт это минуты.
+
+| Ситуация | Что видно | Что делать |
+|---|---|---|
+| `up -d` без `down` | `pg17-backup`: «старый postgres ещё работает», стек остаётся на старой версии | `docker compose down && docker compose up -d` |
+| Ошибка дампа или заливки | шаг завершился с ошибкой, postgres и backend не стартуют | прочитать `docker compose logs pg17-backup pg18-restore`, устранить причину, `docker compose up -d` — дамп снимется и зальётся заново |
+
+Переносится база `fara` и все роли кластера. Если вы заводили в нём свои базы, они остались в томе `pgdata` — перенесите их вручную через `pg_dump`/`pg_restore`.
+
+**Откат на 17.** В `docker-compose.yml` у сервиса `postgres` верните `image: postgres:17` и том `pgdata:/var/lib/postgresql/data`, уберите `depends_on: pg18-restore`. Изменения, сделанные уже на 18, в старую базу не попадут.
+
+**Восстановить из дампа вручную** (в работающий стек, текущая база будет заменена):
+
+```bash
+docker compose exec -T postgres pg_restore -U openpg -d fara --clean --if-exists < backups/postgres/pg17-<дата>/fara.dump
+```
+
+Файлы дампа принадлежат uid 999 (пользователь postgres в контейнере) и закрыты для остальных — читать через `sudo`.
+
+**После проверки** старый том и дамп можно удалить:
+
+```bash
+docker volume rm faracrm_pgdata
+sudo rm -rf backups/postgres/pg17-*
+```
 
 ## HSTS
 

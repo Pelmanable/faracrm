@@ -1,17 +1,57 @@
+# Общие для postgres и шагов перехода 17 → 18 — чтобы не разъехались.
+# Пользователь и пароль — из .env, те же, по которым подключается бэкенд.
+# Postgres применяет их ТОЛЬКО при первом старте на пустом томе; потом пароль
+# меняют в самой базе (deploy.md, «Пользователь и пароль базы»).
+x-postgres-env: &postgres-env
+  POSTGRES_DB: fara
+  POSTGRES_USER: ${dotorm_databases_postgres__fara__user:-openpg}
+  POSTGRES_PASSWORD: ${dotorm_databases_postgres__fara__password:-openpgpwd}
+
 services:
+
+  # ─── Переход PostgreSQL 17 → 18 ───────────────────────
+  # Два одноразовых шага перед стартом postgres: дамп старого тома pgdata и
+  # заливка его в новый том pgdata18. На свежей установке и после перехода
+  # оба завершаются сразу. Старый том не меняется — он остаётся для отката.
+  # Подробности: docs/dist/guides/deploy.md, «Переход на PostgreSQL 18».
+  pg17-backup:
+    image: postgres:17
+    environment: *postgres-env
+    entrypoint: ["bash", "/pg-upgrade/backup17.sh"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgdata18:/pg18:ro
+      - ./backups/postgres:/backups
+      - ./docker/pg-upgrade:/pg-upgrade:ro
+
+  pg18-restore:
+    image: postgres:18
+    user: postgres
+    environment: *postgres-env
+    entrypoint: ["bash", "/pg-upgrade/restore18.sh"]
+    depends_on:
+      pg17-backup:
+        condition: service_completed_successfully
+    volumes:
+      - pgdata18:/var/lib/postgresql
+      - pgdata:/pg17:ro
+      - ./backups/postgres:/backups:ro
+      - ./docker/pg-upgrade:/pg-upgrade:ro
 
   # ─── PostgreSQL ────────────────────────────────────────
   postgres:
-    image: postgres:17
+    image: postgres:18
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: fara
-      POSTGRES_USER: openpg
-      POSTGRES_PASSWORD: openpgpwd
+    environment: *postgres-env
+    depends_on:
+      pg18-restore:
+        condition: service_completed_successfully
     # ports:
       # - "5433:5432"
+    # С 18 образ хранит данные в /var/lib/postgresql/18/docker — монтируется
+    # родительский каталог, а не /var/lib/postgresql/data, как было в 17.
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata18:/var/lib/postgresql
 
     # PostgreSQL разумные дефолты для небольшого prod-стенда
     # (подобраны под 2 vCPU / 4 GB RAM — работают на любой машине от этого размера).
@@ -45,9 +85,9 @@ services:
       - "-c"
       - "random_page_cost=1.1"               # PG default: 4.0 (HDD)
       # effective_io_concurrency: сколько параллельных IO-запросов может сделать диск.
-      # Для SSD = 200, NVMe = 300, HDD = 2. По умолчанию всего 1.
+      # Для SSD = 200, NVMe = 300, HDD = 2. По умолчанию 16.
       - "-c"
-      - "effective_io_concurrency=200"       # PG default: 1
+      - "effective_io_concurrency=200"       # PG default: 16
       # ── WAL / Checkpoints ─────────────────────────────
       # checkpoint_completion_target: размазывает IO от checkpoint по времени.
       # В PG 16+ уже дефолт 0.9, указан явно для явности.
@@ -69,7 +109,7 @@ services:
     shm_size: 512MB                          # Docker default: 64MB
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openpg -d fara"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -223,6 +263,9 @@ services:
       - no-new-privileges:true
 
 volumes:
+  pgdata18:
+  # Данные PostgreSQL 17: их читает только pg17-backup. После перехода том
+  # можно удалить (deploy.md, «Переход на PostgreSQL 18»).
   pgdata:
   filestore_docker:
   # Общий секрет TURN. Живёт в томе, а не в .env: его пишет бэкенд, читает

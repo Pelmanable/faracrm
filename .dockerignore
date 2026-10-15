@@ -10,3 +10,5 @@ frontend/node_modules
 .mypy_cache
 tests/
 frontend/.env
+# Дампы базы: гигабайты, которые иначе уезжали бы в контекст каждой сборки
+backups/

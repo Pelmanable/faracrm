@@ -9,6 +9,8 @@
 # docker/backend.Dockerfile при деплое, в репозитории ему делать нечего.
 /docs/site/
 /filestore/
+# Дампы базы (pg17-backup при переходе на PostgreSQL 18)
+/backups/
 .env
 # See http://help.github.com/ignore-files/ for more about ignoring files.
 
