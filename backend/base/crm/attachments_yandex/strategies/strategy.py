@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import httpx
+from starlette.responses import Response
 
 from backend.base.crm.attachments.strategies.strategy import (
     StorageStrategyBase,
@@ -47,6 +48,7 @@ class YandexDiskStrategy(StorageStrategyBase):
     """
 
     strategy_type = "yandex"
+    supports_streaming = True
 
     file_url_base = WEB_DISK_BASE
 
@@ -227,6 +229,36 @@ class YandexDiskStrategy(StorageStrategyBase):
             )
         return response
 
+    async def _download_href(
+        self,
+        storage: "AttachmentStorage",
+        attachment: "Attachment",
+    ) -> str | None:
+        """Временная ссылка на скачивание файла (API resources/download)."""
+        dl_resp = await self._request(
+            storage,
+            "GET",
+            f"{DISK_API_BASE}/resources/download",
+            params={"path": attachment.storage_file_id},
+        )
+
+        if dl_resp.status_code != 200:
+            logger.error(
+                "Failed to get Yandex download URL for %s: %s %s",
+                attachment.storage_file_id,
+                dl_resp.status_code,
+                dl_resp.text,
+            )
+            return None
+
+        href = dl_resp.json().get("href")
+        if not href:
+            logger.error(
+                "Yandex API did not return download URL for %s",
+                attachment.storage_file_id,
+            )
+        return href
+
     async def _ensure_folder_exists(
         self,
         storage: "AttachmentStorage",
@@ -382,28 +414,8 @@ class YandexDiskStrategy(StorageStrategyBase):
 
         try:
             # 1. Получаем download URL
-            dl_resp = await self._request(
-                storage,
-                "GET",
-                f"{DISK_API_BASE}/resources/download",
-                params={"path": attachment.storage_file_id},
-            )
-
-            if dl_resp.status_code != 200:
-                logger.error(
-                    "Failed to get Yandex download URL for %s: %s %s",
-                    attachment.storage_file_id,
-                    dl_resp.status_code,
-                    dl_resp.text,
-                )
-                return None
-
-            href = dl_resp.json().get("href")
+            href = await self._download_href(storage, attachment)
             if not href:
-                logger.error(
-                    "Yandex API did not return download URL for %s",
-                    attachment.storage_file_id,
-                )
                 return None
 
             # 2. Скачиваем содержимое (по этому URL OAuth не требуется)
@@ -432,6 +444,30 @@ class YandexDiskStrategy(StorageStrategyBase):
                 e,
             )
             return None
+
+    async def read_range(
+        self,
+        storage: "AttachmentStorage",
+        attachment: "Attachment",
+        headers: dict[str, str],
+        range_header: str | None,
+    ) -> Response:
+        """
+        Файл с Яндекс.Диска потоком: download-URL от API, Range браузера
+        уходит по нему (ссылка Яндекса куски отдаёт сама).
+        """
+        self._log_operation(
+            "read_range", attachment, file_id=attachment.storage_file_id
+        )
+
+        href = await self._download_href(storage, attachment)
+        if not href:
+            return Response(status_code=502)
+
+        # По download-URL OAuth не требуется
+        return await self._stream_url(
+            href, {}, range_header, headers, attachment.mimetype
+        )
 
     async def update_file(
         self,

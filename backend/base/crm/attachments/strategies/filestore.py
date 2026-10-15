@@ -284,10 +284,12 @@ class FileStoreStrategy(StorageStrategyBase):
         storage: "AttachmentStorage",
         attachment: "Attachment",
         headers: dict[str, str],
+        range_header: str | None,
     ) -> FileResponse:
         """
         Файл с диска кусками по 64 КБ: Range (перемотка видео, докачка)
-        обрабатывает Starlette, весь файл в память не читается.
+        FileResponse берёт из запроса и обрабатывает сам — range_header не
+        нужен; весь файл в память не читается.
         """
         return FileResponse(
             attachment.storage_file_url,

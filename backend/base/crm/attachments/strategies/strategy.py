@@ -5,14 +5,20 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 import logging
 
+import httpx
+from starlette.background import BackgroundTask
+from starlette.responses import Response, StreamingResponse
+
 if TYPE_CHECKING:
-    from starlette.responses import Response
     from backend.base.crm.attachments.models.attachments_storage import (
         AttachmentStorage,
     )
     from backend.base.crm.attachments.models.attachments import Attachment
 
 logger = logging.getLogger(__name__)
+
+# Таймаут ожидания данных от провайдера при потоковой отдаче (секунды)
+STREAM_TIMEOUT = 60.0
 
 
 class StorageStrategyBase(ABC):
@@ -228,7 +234,8 @@ class StorageStrategyBase(ABC):
         storage: "AttachmentStorage",
         attachment: "Attachment",
         headers: dict[str, str],
-    ) -> "Response":
+        range_header: str | None,
+    ) -> Response:
         """
         Ответ с файлом, который читается по кускам (Range) — только у
         стратегий с supports_streaming.
@@ -237,6 +244,7 @@ class StorageStrategyBase(ABC):
             storage: Экземпляр хранилища
             attachment: Экземпляр вложения
             headers: Заголовки ответа (Content-Disposition, ETag и т.д.)
+            range_header: Заголовок Range запроса браузера (или None)
 
         Returns:
             HTTP-ответ с файлом
@@ -269,6 +277,75 @@ class StorageStrategyBase(ABC):
     # ========================================================================
     # Вспомогательные методы
     # ========================================================================
+
+    async def _stream_url(
+        self,
+        url: str,
+        request_headers: dict[str, str],
+        range_header: str | None,
+        headers: dict[str, str],
+        media_type: str | None,
+    ) -> Response:
+        """
+        Отдать файл по ссылке провайдера потоком (read_range облачных
+        хранилищ): Range браузера уходит провайдеру, его ответ (200 или
+        206 с куском) идёт браузеру по мере получения — сервер файл целиком
+        не скачивает и в памяти не держит.
+
+        Args:
+            url: Ссылка на содержимое файла у провайдера
+            request_headers: Заголовки запроса к провайдеру (авторизация)
+            range_header: Заголовок Range запроса браузера (или None)
+            headers: Заголовки ответа (Content-Disposition, ETag и т.д.)
+            media_type: MIME-тип файла
+
+        Returns:
+            Потоковый ответ; 502 — если провайдер не отдал файл
+        """
+        # identity — без сжатия: длина и куски у провайдера те же, что
+        # уйдут браузеру
+        request_headers = {**request_headers, "Accept-Encoding": "identity"}
+        if range_header:
+            request_headers["Range"] = range_header
+
+        client = httpx.AsyncClient(
+            timeout=STREAM_TIMEOUT, follow_redirects=True
+        )
+        try:
+            upstream = await client.send(
+                client.build_request("GET", url, headers=request_headers),
+                stream=True,
+            )
+        except Exception:
+            await client.aclose()
+            raise
+
+        async def close() -> None:
+            await upstream.aclose()
+            await client.aclose()
+
+        if upstream.status_code not in (200, 206):
+            await close()
+            logger.error(
+                "[%s] stream failed: %s %s",
+                self.strategy_type,
+                upstream.status_code,
+                url,
+            )
+            return Response(status_code=502)
+
+        passed = {
+            name: upstream.headers[name]
+            for name in ("Content-Length", "Content-Range", "Accept-Ranges")
+            if name in upstream.headers
+        }
+        return StreamingResponse(
+            upstream.aiter_bytes(),
+            status_code=upstream.status_code,
+            media_type=media_type,
+            headers={**headers, **passed},
+            background=BackgroundTask(close),
+        )
 
     def _log_operation(
         self, operation: str, attachment: "Attachment", **kwargs

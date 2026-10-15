@@ -115,12 +115,14 @@ async def attachment_content(req: Request, attachment_id: Id):
         "Content-Disposition": f"attachment; filename*=utf-8''{quote(attach.name, safe='')}"
     }
 
-    # Хранилище со стримингом (файловое) — отдаёт файл по кускам
+    # Хранилище со стримингом — отдаёт файл по кускам
     strategy = attach.storage_id and get_strategy(attach.storage_id.type)
     if strategy and strategy.supports_streaming:
-        return await strategy.read_range(attach.storage_id, attach, headers)
+        return await strategy.read_range(
+            attach.storage_id, attach, headers, req.headers.get("range")
+        )
 
-    # Облачное хранилище — читаем целиком
+    # Хранилище без стриминга — читаем целиком
     attachment_content = await attach.read_content()
 
     return Response(
@@ -204,12 +206,14 @@ async def attachment_preview(
             content=attachment_content,
         )
 
-    # Оригинал из хранилища со стримингом (файловое) — по кускам
+    # Оригинал из хранилища со стримингом — по кускам
     strategy = attach.storage_id and get_strategy(attach.storage_id.type)
     if strategy and strategy.supports_streaming:
-        return await strategy.read_range(attach.storage_id, attach, headers)
+        return await strategy.read_range(
+            attach.storage_id, attach, headers, req.headers.get("range")
+        )
 
-    # Оригинал из облачного хранилища — читаем целиком
+    # Оригинал из хранилища без стриминга — читаем целиком
     attachment_content = await attach.read_content()
 
     return Response(

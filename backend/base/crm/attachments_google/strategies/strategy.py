@@ -7,6 +7,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from starlette.responses import Response
+
 from backend.base.crm.attachments.strategies.strategy import (
     StorageStrategyBase,
 )
@@ -24,6 +26,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/drive.file",
 ]
+
+# Содержимое файла: GET {DRIVE_FILES_URL}/{id}?alt=media (понимает Range)
+DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 
 
 class GoogleDriveStrategy(StorageStrategyBase):
@@ -43,6 +48,7 @@ class GoogleDriveStrategy(StorageStrategyBase):
     """
 
     strategy_type = "google"
+    supports_streaming = True
 
     # URL для просмотра папок в Google Drive
     folder_url = "https://drive.google.com/drive/folders/"
@@ -61,9 +67,27 @@ class GoogleDriveStrategy(StorageStrategyBase):
         Raises:
             ValueError: Если credentials не настроены
         """
+        from googleapiclient.discovery import build
+
+        credentials = await self.get_credentials(storage)
+        return build("drive", "v3", credentials=credentials)
+
+    async def get_credentials(self, storage: "AttachmentStorage"):
+        """
+        Credentials Google с действующим access token: истёкший (или
+        истекающий) обновляется и сохраняется в storage.
+
+        Args:
+            storage: Хранилище с credentials
+
+        Returns:
+            google.oauth2.credentials.Credentials
+
+        Raises:
+            ValueError: Если credentials не настроены или не читаются
+        """
         import google.oauth2.credentials
         from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
 
         if not storage.google_credentials:
             raise ValueError(
@@ -107,9 +131,9 @@ class GoogleDriveStrategy(StorageStrategyBase):
                 # Сохраняем обновлённые credentials обратно в storage
                 await self._save_refreshed_credentials(storage, credentials)
 
-            return build("drive", "v3", credentials=credentials)
+            return credentials
         except Exception as e:
-            logger.error("Failed to create Google Drive service: %s", e)
+            logger.error("Failed to load Google credentials: %s", e)
             raise ValueError(f"Invalid Google credentials: {e}") from e
 
     async def _save_refreshed_credentials(
@@ -292,6 +316,34 @@ class GoogleDriveStrategy(StorageStrategyBase):
                 e,
             )
             return None
+
+    async def read_range(
+        self,
+        storage: "AttachmentStorage",
+        attachment: "Attachment",
+        headers: dict[str, str],
+        range_header: str | None,
+    ) -> Response:
+        """
+        Файл из Google Drive потоком: Drive API (alt=media) отдаёт куски
+        по Range сам; supportsAllDrives — чтобы читались и общие диски.
+        """
+        self._log_operation(
+            "read_range", attachment, file_id=attachment.storage_file_id
+        )
+
+        credentials = await self.get_credentials(storage)
+        url = (
+            f"{DRIVE_FILES_URL}/{attachment.storage_file_id}"
+            "?alt=media&supportsAllDrives=true"
+        )
+        return await self._stream_url(
+            url,
+            {"Authorization": f"Bearer {credentials.token}"},
+            range_header,
+            headers,
+            attachment.mimetype,
+        )
 
     async def update_file(
         self,
