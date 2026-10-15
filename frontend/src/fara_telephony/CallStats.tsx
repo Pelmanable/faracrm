@@ -1,5 +1,6 @@
 // Copyright 2025 FARA CRM
-// Сводка по звонкам («Всего / Отвечено / Пропущено / Входящие») над таблицей.
+// Сводка по звонкам («Всего / Отвечено / Пропущено / Входящие / Исходящие»)
+// над таблицей.
 //
 // Считает БЭК (POST /telephony/calls/stats) по тому же фильтру, что уходит
 // в /auto/call/search, но без пагинации: в таблице видна страница, в плашках —
@@ -49,7 +50,7 @@ export function CallStats({ filter }: { filter?: FilterExpression }) {
   const { data, isFetching } = useGetCallsStatsQuery({ filter: merged });
 
   return (
-    <SimpleGrid cols={{ base: 2, sm: 4 }} mb="md" px="xs" pt="xs">
+    <SimpleGrid cols={{ base: 2, sm: 5 }} mb="md" px="xs" pt="xs">
       <StatCard
         label={t('calls.total', 'Всего')}
         value={data?.total ?? 0}
@@ -71,6 +72,12 @@ export function CallStats({ filter }: { filter?: FilterExpression }) {
         label={t('calls.incomingPlural', 'Входящие')}
         value={data?.incoming ?? 0}
         color="blue"
+        loading={isFetching}
+      />
+      <StatCard
+        label={t('calls.outgoingPlural', 'Исходящие')}
+        value={data?.outgoing ?? 0}
+        color="violet"
         loading={isFetching}
       />
     </SimpleGrid>
