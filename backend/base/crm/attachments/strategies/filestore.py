@@ -12,6 +12,8 @@ import hashlib
 import logging
 from typing import TYPE_CHECKING, Any
 
+from starlette.responses import FileResponse
+
 from .strategy import StorageStrategyBase
 from backend.base.system.core.enviroment import env
 
@@ -134,6 +136,7 @@ class FileStoreStrategy(StorageStrategyBase):
     """
 
     strategy_type = "file"
+    supports_streaming = True
 
     # Путь по умолчанию (fallback если system_settings недоступен)
     DEFAULT_FILESTORE_PATH = os.path.join(os.getcwd(), "filestore")
@@ -275,6 +278,22 @@ class FileStoreStrategy(StorageStrategyBase):
 
         async with aiofiles.open(file_path, mode="rb") as f:
             return await f.read()
+
+    async def read_range(
+        self,
+        storage: "AttachmentStorage",
+        attachment: "Attachment",
+        headers: dict[str, str],
+    ) -> FileResponse:
+        """
+        Файл с диска кусками по 64 КБ: Range (перемотка видео, докачка)
+        обрабатывает Starlette, весь файл в память не читается.
+        """
+        return FileResponse(
+            attachment.storage_file_url,
+            media_type=attachment.mimetype,
+            headers=headers,
+        )
 
     async def update_file(
         self,

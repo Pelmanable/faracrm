@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 import logging
 
 if TYPE_CHECKING:
+    from starlette.responses import Response
     from backend.base.crm.attachments.models.attachments_storage import (
         AttachmentStorage,
     )
@@ -30,6 +31,10 @@ class StorageStrategyBase(ABC):
 
     # Уникальный тип стратегии (должен совпадать с storage.type)
     strategy_type: str = ""
+
+    # Стратегия отдаёт файл потоком (read_range: кусками, с Range), не
+    # читая целиком в память — роут вызывает read_range вместо read_file
+    supports_streaming: bool = False
 
     # ========================================================================
     # Абстрактные методы - должны быть реализованы в каждой стратегии
@@ -217,6 +222,28 @@ class StorageStrategyBase(ABC):
             URL файла или None
         """
         return attachment.storage_file_url
+
+    async def read_range(
+        self,
+        storage: "AttachmentStorage",
+        attachment: "Attachment",
+        headers: dict[str, str],
+    ) -> "Response":
+        """
+        Ответ с файлом, который читается по кускам (Range) — только у
+        стратегий с supports_streaming.
+
+        Args:
+            storage: Экземпляр хранилища
+            attachment: Экземпляр вложения
+            headers: Заголовки ответа (Content-Disposition, ETag и т.д.)
+
+        Returns:
+            HTTP-ответ с файлом
+        """
+        raise NotImplementedError(
+            f"read_range not supported for {self.strategy_type}"
+        )
 
     async def move_file(
         self,

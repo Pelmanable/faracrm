@@ -14,6 +14,7 @@ import {
   IconTrash,
   IconDownload,
   IconEdit,
+  IconEye,
   IconRefresh,
   IconX,
   IconPhotoOff,
@@ -21,14 +22,20 @@ import {
 import { FileIcon } from './FileIcon';
 import { ImagePreviewModal } from './ImagePreviewModal';
 import { DocxEditorModal } from './DocxEditorModal';
+import { VideoPreviewModal } from './VideoPreviewModal';
 import { AudioPlayer } from './AudioPlayer';
 import {
   isImageMimetype,
   isAudioMimetype,
+  isVideoMimetype,
   isDocxMimetype,
+  isBrowserViewableMimetype,
   formatFileSize,
 } from './fileIcons';
-import { attachmentPreviewUrl } from '@/utils/attachmentUrls';
+import {
+  attachmentPreviewUrl,
+  openAttachmentInBrowser,
+} from '@/utils/attachmentUrls';
 import classes from './AttachmentPreview.module.css';
 
 export interface AttachmentData {
@@ -87,6 +94,7 @@ export function AttachmentPreview({
 
   const [imageModalOpened, setImageModalOpened] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
+  const [videoOpened, setVideoOpened] = useState(false);
 
   // Трекаем id чтобы не сбрасывать при ререндерах с тем же id
   const loadedForIdRef = useRef<number | string | null>(null);
@@ -94,11 +102,18 @@ export function AttachmentPreview({
 
   const isImage = isImageMimetype(attachment.mimetype);
   const isAudio = isAudioMimetype(attachment.mimetype);
+  const savedId =
+    typeof attachment.id === 'number' && attachment.id > 0
+      ? attachment.id
+      : null;
   // Правка docx во встроенном редакторе — только у сохранённого вложения
   const canEditDocx =
-    typeof attachment.id === 'number' &&
-    attachment.id > 0 &&
-    isDocxMimetype(attachment.mimetype, attachment.name);
+    !!savedId && isDocxMimetype(attachment.mimetype, attachment.name);
+  // Просмотр без скачивания у сохранённого: видео — плеер в окне, PDF и
+  // текст — встроенный просмотрщик браузера в новой вкладке
+  const canPlayVideo = !!savedId && isVideoMimetype(attachment.mimetype);
+  const canOpenInBrowser =
+    !!savedId && isBrowserViewableMimetype(attachment.mimetype);
 
   const canFetchFromApi =
     isImage &&
@@ -183,6 +198,16 @@ export function AttachmentPreview({
       return;
     }
 
+    if (canPlayVideo) {
+      setVideoOpened(true);
+      return;
+    }
+
+    if (canOpenInBrowser) {
+      openAttachmentInBrowser(savedId!, attachment.checksum);
+      return;
+    }
+
     if (!isImage) {
       onDownload?.();
       return;
@@ -217,6 +242,10 @@ export function AttachmentPreview({
     }
   }, [
     onClick,
+    canPlayVideo,
+    canOpenInBrowser,
+    savedId,
+    attachment.checksum,
     isImage,
     thumbnailError,
     originalSrc,
@@ -228,6 +257,10 @@ export function AttachmentPreview({
   ]);
 
   const isLoadingAny = isLoadingThumbnail || isLoadingOriginal;
+
+  // «Просмотр» — то же, что клик по превью
+  const canView =
+    (isImage && !thumbnailError) || canPlayVideo || canOpenInBrowser;
 
   // --- Compact mode ---
   if (compact) {
@@ -369,6 +402,20 @@ export function AttachmentPreview({
 
             {showActions && (
               <Group gap="xs" mt={4}>
+                {canView && (
+                  <Tooltip label="Просмотр">
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      color="blue"
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleClick();
+                      }}>
+                      <IconEye size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 {onDownload && (
                   <Tooltip label="Скачать">
                     <ActionIcon
@@ -438,6 +485,17 @@ export function AttachmentPreview({
           filename={attachment.name}
           opened={editorOpened}
           onClose={() => setEditorOpened(false)}
+        />
+      )}
+
+      {/* Плеер видео */}
+      {canPlayVideo && (
+        <VideoPreviewModal
+          opened={videoOpened}
+          onClose={() => setVideoOpened(false)}
+          attachmentId={savedId!}
+          checksum={attachment.checksum}
+          filename={attachment.name}
         />
       )}
 

@@ -93,6 +93,21 @@ export function downloadAttachment(
   triggerDownload(attachmentContentUrl(id), filename);
 }
 
+/**
+ * Открыть вложение во встроенном просмотрщике браузера (PDF, текст) — в
+ * новой вкладке, inline-ответ превью. Вызывать из обработчика клика.
+ */
+export function openAttachmentInBrowser(
+  id: number | string,
+  checksum?: string | null,
+): void {
+  window.open(
+    attachmentPreviewUrl(id, undefined, undefined, checksum),
+    '_blank',
+    'noopener',
+  );
+}
+
 /** Скачать ещё не загруженный файл прямо из base64-контента. */
 export function downloadBase64(
   content: string,

@@ -45,11 +45,13 @@ import {
   GalleryItem,
 } from '@/components/Attachment/ImageGalleryModal';
 import { DocxEditorModal } from '@/components/Attachment/DocxEditorModal';
+import { VideoPreviewModal } from '@/components/Attachment/VideoPreviewModal';
 import {
   isImageMimetype,
   isAudioMimetype,
   isVideoMimetype,
   isDocxMimetype,
+  isBrowserViewableMimetype,
   formatFileSize,
 } from '@/components/Attachment/fileIcons';
 import {
@@ -57,6 +59,7 @@ import {
   downloadAttachment,
   googleEditUrl,
   isGoogleEditable,
+  openAttachmentInBrowser,
 } from '@/utils/attachmentUrls';
 import { useTranslation } from 'react-i18next';
 import classes from './Kanban.module.css';
@@ -133,6 +136,7 @@ function AttachmentCard({
   const [isLoading, setIsLoading] = useState(false);
   const [manuallyLoaded, setManuallyLoaded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
 
   const isImage = isImageMimetype(attachment.mimetype);
   const isAudio = isAudioMimetype(attachment.mimetype);
@@ -140,6 +144,11 @@ function AttachmentCard({
   // Правка docx во встроенном редакторе (DocxEditorModal)
   const canEditDocx =
     !!attachment.id && isDocxMimetype(attachment.mimetype, attachment.name);
+  // Просмотр без скачивания: видео — плеер в окне, PDF и текст — вкладка
+  // браузера
+  const canPlayVideo = !!attachment.id && isVideo;
+  const canOpenInBrowser =
+    !!attachment.id && isBrowserViewableMimetype(attachment.mimetype);
 
   // Определяем, является ли хранилище облачным (type != 'file')
   const isCloudStorage = useMemo(() => {
@@ -198,6 +207,10 @@ function AttachmentCard({
     e.stopPropagation();
     if (isImage) {
       onOpenGallery();
+    } else if (canPlayVideo) {
+      setVideoOpen(true);
+    } else if (canOpenInBrowser) {
+      openAttachmentInBrowser(Number(attachment.id), attachment.checksum);
     }
   };
 
@@ -369,7 +382,7 @@ function AttachmentCard({
 
           {/* Кнопки действий */}
           <Group gap={4} mt={4}>
-            {isImage && (
+            {(isImage || canPlayVideo || canOpenInBrowser) && (
               <Tooltip label="Просмотр">
                 <ActionIcon
                   size="sm"
@@ -457,6 +470,16 @@ function AttachmentCard({
           filename={attachment.name}
           opened={editorOpen}
           onClose={() => setEditorOpen(false)}
+        />
+      )}
+
+      {canPlayVideo && (
+        <VideoPreviewModal
+          opened={videoOpen}
+          onClose={() => setVideoOpen(false)}
+          attachmentId={Number(attachment.id)}
+          checksum={attachment.checksum}
+          filename={attachment.name}
         />
       )}
     </>

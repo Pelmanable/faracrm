@@ -47,17 +47,20 @@ import { useFormContext } from '@/components/Form/FormContext';
 import { FileIcon } from './FileIcon';
 import { ImagePreviewModal } from './ImagePreviewModal';
 import { DocxEditorModal } from './DocxEditorModal';
+import { VideoPreviewModal } from './VideoPreviewModal';
 import {
   isImageMimetype,
   isAudioMimetype,
   isVideoMimetype,
   isDocxMimetype,
+  isBrowserViewableMimetype,
   formatFileSize,
 } from './fileIcons';
 import {
   attachmentPreviewUrl,
   downloadAttachment,
   downloadBase64,
+  openAttachmentInBrowser,
 } from '@/utils/attachmentUrls';
 import classes from './AttachmentPreviewCard.module.css';
 
@@ -78,6 +81,7 @@ export function AttachmentPreviewCard({
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +110,11 @@ export function AttachmentPreviewCard({
   const hasFile = !!(id || newFileContent);
   // Правка docx во встроенном редакторе — только сохранённого файла
   const canEditDocx = !!id && !newFileContent && isDocxMimetype(mimetype, name);
+  // Просмотр без скачивания, тоже у сохранённого: видео — плеер в окне,
+  // PDF и текст — вкладка браузера
+  const canPlayVideo = !!id && !newFileContent && isVideo;
+  const canOpenInBrowser =
+    !!id && !newFileContent && isBrowserViewableMimetype(mimetype);
 
   // URL изображения по приоритету
   let imageSrc: string | null = null;
@@ -209,6 +218,17 @@ export function AttachmentPreviewCard({
       content: null,
     });
     setError(null);
+  };
+
+  const handleView = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (imageSrc) {
+      setPreviewOpen(true);
+    } else if (canPlayVideo) {
+      setVideoOpen(true);
+    } else if (canOpenInBrowser) {
+      openAttachmentInBrowser(id, checksum);
+    }
   };
 
   const handleDownload = (e: React.MouseEvent) => {
@@ -344,15 +364,9 @@ export function AttachmentPreviewCard({
               {name || 'Без имени'}
             </Text>
             <Group gap="xs">
-              {imageSrc && (
+              {(imageSrc || canPlayVideo || canOpenInBrowser) && (
                 <Tooltip label="Просмотр">
-                  <ActionIcon
-                    variant="light"
-                    color="blue"
-                    onClick={e => {
-                      e.stopPropagation();
-                      setPreviewOpen(true);
-                    }}>
+                  <ActionIcon variant="light" color="blue" onClick={handleView}>
                     <IconEye size={18} />
                   </ActionIcon>
                 </Tooltip>
@@ -480,6 +494,16 @@ export function AttachmentPreviewCard({
           filename={name}
           opened={editorOpen}
           onClose={() => setEditorOpen(false)}
+        />
+      )}
+
+      {canPlayVideo && (
+        <VideoPreviewModal
+          opened={videoOpen}
+          onClose={() => setVideoOpen(false)}
+          attachmentId={Number(id)}
+          checksum={checksum}
+          filename={name}
         />
       )}
 

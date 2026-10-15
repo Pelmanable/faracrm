@@ -7,12 +7,14 @@ export type { AttachmentData } from './AttachmentPreview';
 export { AudioPlayer } from './AudioPlayer';
 export { VoiceRecorder } from './VoiceRecorder';
 export { DocxEditorModal } from './DocxEditorModal';
+export { VideoPreviewModal } from './VideoPreviewModal';
 export {
   getFileIconConfig,
   isImageMimetype,
   isVideoMimetype,
   isAudioMimetype,
   isDocxMimetype,
+  isBrowserViewableMimetype,
   formatFileSize,
 } from './fileIcons';
 export type { FileIconConfig } from './fileIcons';

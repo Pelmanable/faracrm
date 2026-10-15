@@ -189,6 +189,22 @@ export function isDocxMimetype(
 }
 
 /**
+ * Файлы, которые браузер показывает сам, — их «Просмотр» открывает в новой
+ * вкладке. HTML, SVG и XML сюда не входят: открытые с домена приложения,
+ * они выполнили бы скрипты из файла.
+ */
+const BROWSER_VIEWABLE_MIMETYPES = new Set([
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/json',
+]);
+
+export function isBrowserViewableMimetype(mimetype?: string | null): boolean {
+  return !!mimetype && BROWSER_VIEWABLE_MIMETYPES.has(mimetype);
+}
+
+/**
  * Форматировать размер файла
  */
 export function formatFileSize(bytes?: number | null): string {

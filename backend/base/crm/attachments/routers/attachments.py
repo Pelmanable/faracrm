@@ -7,6 +7,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from PIL import Image
 from urllib.parse import quote
 
+from backend.base.crm.attachments.strategies import get_strategy
 from backend.base.crm.auth_token.app import AuthTokenApp
 from backend.base.system.schemas.base_schema import Id
 
@@ -109,13 +110,21 @@ async def attachment_content(req: Request, attachment_id: Id):
             content={"error": "#NOT_FOUND"}, status_code=HTTP_404_NOT_FOUND
         )
 
+    # Без filename* браузер не переведет проценты обратно в буквы
+    headers = {
+        "Content-Disposition": f"attachment; filename*=utf-8''{quote(attach.name, safe='')}"
+    }
+
+    # Хранилище со стримингом (файловое) — отдаёт файл по кускам
+    strategy = attach.storage_id and get_strategy(attach.storage_id.type)
+    if strategy and strategy.supports_streaming:
+        return await strategy.read_range(attach.storage_id, attach, headers)
+
+    # Облачное хранилище — читаем целиком
     attachment_content = await attach.read_content()
 
     return Response(
-        # Без filename* браузер не переведет проценты обратно в буквы
-        headers={
-            "Content-Disposition": f"attachment; filename*=utf-8''{quote(attach.name, safe='')}"
-        },
+        headers=headers,
         media_type=attach.mimetype,
         content=attachment_content,
     )
@@ -158,39 +167,53 @@ async def attachment_preview(
             content={"error": "#NOT_FOUND"}, status_code=HTTP_404_NOT_FOUND
         )
 
-    attachment_content = await attach.read_content()
-
-    # Ресайз если указаны размеры и это изображение
-    if (
-        (w or h)
-        and attach.mimetype in RESIZABLE_MIMETYPES
-        and attachment_content is not None
-    ):
-        try:
-            width = w or h or 100
-            height = h or w or 100
-            attachment_content = resize_image(
-                attachment_content, width, height, attach.mimetype
-            )
-        except Exception as e:
-            # Если ресайз не удался, возвращаем оригинал
-            logger.warning("Resize image fails, return the original: %s", e)
-
     # ETag на основе checksum + размеров (уникальный ключ варианта)
     etag = f'"{attach.checksum or attach.id}-{w or 0}-{h or 0}"'
 
-    # Если клиент прислал If-None-Match и checksum совпадает — 304
+    # Если клиент прислал If-None-Match и checksum совпадает — 304, файл
+    # не читаем
     if_none_match = req.headers.get("if-none-match")
     if if_none_match and if_none_match == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
+    # Без filename* браузер не переведет проценты обратно в буквы
+    headers = {
+        "Content-Disposition": f"inline; filename*=utf-8''{quote(attach.name, safe='')}",
+        "Cache-Control": "private, max-age=86400, immutable",
+        "ETag": etag,
+    }
+
+    # Уменьшенная картинка (указаны размеры) — ресайз в памяти
+    if (w or h) and attach.mimetype in RESIZABLE_MIMETYPES:
+        attachment_content = await attach.read_content()
+        if attachment_content is not None:
+            try:
+                width = w or h or 100
+                height = h or w or 100
+                attachment_content = resize_image(
+                    attachment_content, width, height, attach.mimetype
+                )
+            except Exception as e:
+                # Если ресайз не удался, возвращаем оригинал
+                logger.warning(
+                    "Resize image fails, return the original: %s", e
+                )
+        return Response(
+            headers=headers,
+            media_type=attach.mimetype,
+            content=attachment_content,
+        )
+
+    # Оригинал из хранилища со стримингом (файловое) — по кускам
+    strategy = attach.storage_id and get_strategy(attach.storage_id.type)
+    if strategy and strategy.supports_streaming:
+        return await strategy.read_range(attach.storage_id, attach, headers)
+
+    # Оригинал из облачного хранилища — читаем целиком
+    attachment_content = await attach.read_content()
+
     return Response(
-        # Без filename* браузер не переведет проценты обратно в буквы
-        headers={
-            "Content-Disposition": f"inline; filename*=utf-8''{quote(attach.name, safe='')}",
-            "Cache-Control": "private, max-age=86400, immutable",
-            "ETag": etag,
-        },
+        headers=headers,
         media_type=attach.mimetype,
         content=attachment_content,
     )
