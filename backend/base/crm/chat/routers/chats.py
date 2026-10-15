@@ -107,6 +107,36 @@ async def get_chats(
     return {"data": chats, "total": len(chats)}
 
 
+@router_private.post("/chats/read")
+async def mark_all_as_read(
+    req: Request,
+    search: str | None = Query(None, max_length=200),
+    section: str | None = None,
+    chat_type: str | None = None,
+    scope: str | None = None,
+    connector_id: int | None = None,
+    folder_id: int | None = None,
+):
+    """
+    «Прочитать всё»: непрочитанные чаты текущего списка становятся
+    прочитанными без захода в каждый. Фильтры — те же, что у GET /chats
+    (раздел или папка, чипы, поиск); как отбираются — Chat.read_for_user.
+    """
+    env: "Environment" = req.app.state.env
+    auth_session: "Session" = req.state.session
+
+    count = await env.models.chat.read_for_user(
+        auth_session.user_id,
+        search=search,
+        section=section,
+        chat_type=chat_type,
+        scope=scope,
+        connector_id=connector_id,
+        folder_id=folder_id,
+    )
+    return {"success": True, "count": count}
+
+
 @router_private.get("/chats/folders/unread")
 async def get_folders_unread(req: Request):
     """Непрочитанные сообщения текущего юзера по разделам (квадраты

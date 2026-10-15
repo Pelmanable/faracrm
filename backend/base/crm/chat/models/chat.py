@@ -805,6 +805,41 @@ class Chat(AuditMixin, DotModel):
             reverse=True,
         )
 
+    @hybridmethod
+    async def read_for_user(
+        self,
+        user: "User",
+        *,
+        search: str | None = None,
+        section: str | None = None,
+        chat_type: str | None = None,
+        scope: str | None = None,
+        connector_id: int | None = None,
+        folder_id: int | None = None,
+    ) -> int:
+        """«Прочитать всё» (POST /chats/read): непрочитанные чаты списка с
+        этими фильтрами — тот же отбор, что у GET /chats, — становятся
+        прочитанными без захода в каждый. Возвращает число чатов."""
+        rows = await self._search_ids_for_user(
+            user,
+            limit=10000,
+            offset=0,
+            search=search,
+            section=section,
+            chat_type=chat_type,
+            scope=scope,
+            connector_id=connector_id,
+            unread=True,
+            folder_id=folder_id,
+            include_deleted=False,
+            include_foreign=False,
+        )
+        if rows:
+            await env.models.chat_member.mark_read(
+                user.id, [row["id"] for row in rows]
+            )
+        return len(rows)
+
     async def _search_ids_for_user(
         self,
         user: "User",

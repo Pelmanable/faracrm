@@ -400,6 +400,31 @@ const chatApi = api.injectEndpoints({
       invalidatesTags: [{ type: 'Chat', id: 'FOLDER_UNREAD' }],
     }),
 
+    // «Прочитать все» — непрочитанные чаты списка с этими же фильтрами
+    // (аргументы getChats; limit и флаги видимости бэку не нужны).
+    // Бейджи списка, квадратов и общий счётчик — перечитать.
+    markChatsAsRead: build.mutation<
+      { success: boolean; count: number },
+      GetChatsArgs
+    >({
+      query: ({
+        section,
+        chat_type,
+        scope,
+        connector_id,
+        folder_id,
+        search,
+      }) => ({
+        url: '/chats/read',
+        method: 'POST',
+        params: { section, chat_type, scope, connector_id, folder_id, search },
+      }),
+      invalidatesTags: [
+        { type: 'Chat', id: 'LIST' },
+        { type: 'Chat', id: 'FOLDER_UNREAD' },
+      ],
+    }),
+
     // Delete message
     deleteMessage: build.mutation<
       { success: boolean },
@@ -1215,6 +1240,7 @@ export const {
   useGetChatMessagesQuery,
   useSendMessageMutation,
   useMarkChatAsReadMutation,
+  useMarkChatsAsReadMutation,
   useDeleteMessageMutation,
   useEditMessageMutation,
   usePinMessageMutation,

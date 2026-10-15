@@ -20,17 +20,20 @@ import { useIsSystemAdmin } from '@/hooks/useIsSystemAdmin';
 import {
   IconSearch,
   IconPlus,
+  IconChecks,
   IconDotsVertical,
   IconAdjustments,
   IconPin,
   IconPinnedOff,
   IconRestore,
 } from '@tabler/icons-react';
-import { ViewSettingsPopover, ViewSettingsOption } from './ViewSettingsPopover';
+import type { ViewSettingsOption } from './ViewSettingsPopover';
 import { useTranslation } from 'react-i18next';
 import DOMPurify from 'dompurify';
 import {
   useGetChatsQuery,
+  useMarkChatAsReadMutation,
+  useMarkChatsAsReadMutation,
   usePinChatMutation,
   useRestoreChatMutation,
   Chat,
@@ -171,8 +174,7 @@ export function ChatList({
   // поля нет — переключатель показываем: без команд бэк вернёт «Мои».
   const hasTeams = user?.team_ids?.length !== 0;
 
-  // Один источник правды для опций — используется и десктопным
-  // ViewSettingsPopover, и мобильным Menu.
+  // Опции «Настроек списка» — переключатели в меню ⋮.
   const viewOptions: ViewSettingsOption[] = useMemo(
     () => [
       {
@@ -211,6 +213,10 @@ export function ChatList({
   };
 
   const { data, isLoading, error, refetch } = useGetChatsQuery(queryArgs);
+  // «Прочитать все» — чаты этого же списка, без захода в каждый.
+  const [markChatsAsRead] = useMarkChatsAsReadMutation();
+  // То же для одного чата из его меню — как при открытии чата.
+  const [markChatAsRead] = useMarkChatAsReadMutation();
   const [pinChat] = usePinChatMutation();
   const [restoreChat] = useRestoreChatMutation();
 
@@ -236,6 +242,8 @@ export function ChatList({
   }, [onRefetchReady, refetch]);
 
   const chats = data?.data || [];
+  // «Прочитать все» в меню списка — только когда в нём есть что читать.
+  const hasUnread = chats.some(chat => chat.unread_count > 0);
 
   // Собеседник в direct-чате = участник, который НЕ текущий юзер (по id, не
   // по имени). Включает и партнёра (у внешних чатов собеседник — партнёр).
@@ -334,8 +342,9 @@ export function ChatList({
           </Box>
         )}
 
-        {/* Поиск и действия одной строкой. На мобильном справа от инпута —
-            единая кнопка-меню (Новый чат + view-фильтры). */}
+        {/* Поиск и действия одной строкой: справа от инпута — единая
+            кнопка-меню (Новый чат, Прочитать все, настройки списка), чтобы
+            поиску оставалось место. */}
         <Group gap="xs" wrap="nowrap">
           <TextInput
             placeholder={t('searchChats')}
@@ -346,62 +355,51 @@ export function ChatList({
             style={{ flex: 1 }}
           />
 
-          {isMobile ? (
-            <Menu position="bottom-end" withArrow shadow="md">
-              <Menu.Target>
-                <ActionIcon
-                  variant="light"
-                  size="lg"
-                  title={t('listMenu', 'Меню')}
-                  color={anyOptionActive ? 'orange' : undefined}>
-                  <IconDotsVertical size={18} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  leftSection={<IconPlus size={16} />}
-                  onClick={onNewChat}>
-                  {t('newChat')}
-                </Menu.Item>
-
-                <Divider my={4} />
-                <Menu.Label>
-                  <Group gap={6} wrap="nowrap">
-                    <IconAdjustments size={14} />
-                    <span>{t('listSettings', 'Настройки списка')}</span>
-                  </Group>
-                </Menu.Label>
-                <Stack gap={6} px="sm" py={4}>
-                  {viewOptions.map(opt => (
-                    <Switch
-                      key={opt.key}
-                      checked={opt.checked}
-                      onChange={e => opt.onChange(e.currentTarget.checked)}
-                      label={opt.label}
-                      disabled={opt.disabled}
-                      size="sm"
-                    />
-                  ))}
-                </Stack>
-              </Menu.Dropdown>
-            </Menu>
-          ) : (
-            <>
+          <Menu position="bottom-end" withArrow shadow="md">
+            <Menu.Target>
               <ActionIcon
                 variant="light"
                 size="lg"
-                onClick={onNewChat}
-                title={t('newChat')}>
-                <IconPlus size={18} />
+                title={t('listMenu', 'Меню')}
+                color={anyOptionActive ? 'orange' : undefined}>
+                <IconDotsVertical size={18} />
               </ActionIcon>
-              <ViewSettingsPopover
-                size="lg"
-                variant="light"
-                title={t('listSettings', 'Настройки списка')}
-                options={viewOptions}
-              />
-            </>
-          )}
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<IconPlus size={16} />}
+                onClick={onNewChat}>
+                {t('newChat')}
+              </Menu.Item>
+              {hasUnread && (
+                <Menu.Item
+                  leftSection={<IconChecks size={16} />}
+                  onClick={() => markChatsAsRead(queryArgs)}>
+                  {t('markAllRead')}
+                </Menu.Item>
+              )}
+
+              <Divider my={4} />
+              <Menu.Label>
+                <Group gap={6} wrap="nowrap">
+                  <IconAdjustments size={14} />
+                  <span>{t('listSettings', 'Настройки списка')}</span>
+                </Group>
+              </Menu.Label>
+              <Stack gap={6} px="sm" py={4}>
+                {viewOptions.map(opt => (
+                  <Switch
+                    key={opt.key}
+                    checked={opt.checked}
+                    onChange={e => opt.onChange(e.currentTarget.checked)}
+                    label={opt.label}
+                    disabled={opt.disabled}
+                    size="sm"
+                  />
+                ))}
+              </Stack>
+            </Menu.Dropdown>
+          </Menu>
         </Group>
 
         {/* Чипы раздела: переключатель (один вариант выбран всегда) +
@@ -487,6 +485,15 @@ export function ChatList({
                             onClick={() => togglePin(chat)}>
                             {chat.is_pinned ? t('unpin') : t('pin')}
                           </Menu.Item>
+                          {chat.unread_count > 0 && (
+                            <Menu.Item
+                              leftSection={<IconChecks size={16} />}
+                              onClick={() =>
+                                markChatAsRead({ chatId: chat.id })
+                              }>
+                              {t('markAllRead')}
+                            </Menu.Item>
+                          )}
                           {chat.active === false && (
                             <Menu.Item
                               leftSection={<IconRestore size={16} />}

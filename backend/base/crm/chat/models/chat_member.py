@@ -169,6 +169,25 @@ class ChatMember(AuditMixin, MemberMixin):
             )
         return members
 
+    @classmethod
+    async def mark_read(cls, user_id: int, chat_ids: list[int]) -> None:
+        """Отметка «прочитано до» пользователя в этих чатах переезжает на
+        последнее сообщение каждого — как POST /chats/{id}/read, одним
+        UPDATE на все чаты."""
+        await cls._get_db_session().execute(
+            """
+            UPDATE chat_member cm
+            SET last_read_message_id = (
+                SELECT MAX(m.id) FROM chat_message m
+                WHERE m.chat_id = cm.chat_id AND m.is_deleted = false
+            )
+            WHERE cm.user_id = %s AND cm.is_active = true
+              AND cm.chat_id = ANY(%s)
+            """,
+            (user_id, chat_ids),
+            cursor="void",
+        )
+
     async def check_not_last_admin(self, chat_id: int) -> None:
         """Последний админ не уходит из чата и не теряет права: сначала
         передаёт их другому участнику."""
