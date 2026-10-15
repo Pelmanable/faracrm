@@ -22,6 +22,7 @@
   "rows": "Rows (empty — as many as needed)",
   "width": "Width, cells",
   "height": "Height, cells",
+  "urlWidget": "Link: icon to open the site",
   "tabs": {
     "add": "Add",
     "props": "Properties",

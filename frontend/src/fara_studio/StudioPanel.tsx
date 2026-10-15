@@ -6,7 +6,8 @@
  *                    перетаскиваются в клетку зоны «Дополнительно»;
  *   «Свойства»     — выбранное поле: подпись и варианты (у полей
  *                    студии), техническое имя, тип, размер в клетках,
- *                    обязательность, «Убрать с формы», «Удалить поле»;
+ *                    вид «ссылка» у строки, обязательность, «Убрать с
+ *                    формы», «Удалить поле»;
  *   «Поля формы»   — обязательность полей разметки (саму разметку не
  *                    трогаем). Обязательное по модели — включено всегда.
  */
@@ -260,6 +261,18 @@ function FieldProperties({ name, info, row, editor }: FieldPropertiesProps) {
         />
       )}
       {cell && <CellSize cell={cell} editor={editor} />}
+      {cell && info?.type === 'Char' && (
+        <Checkbox
+          label={t('urlWidget')}
+          checked={cell.widget === 'charUrl'}
+          onChange={e =>
+            editor.setWidget(
+              name,
+              e.currentTarget.checked ? 'charUrl' : undefined,
+            )
+          }
+        />
+      )}
       <Checkbox
         label={t('required')}
         checked={fixed || editor.required.includes(name)}

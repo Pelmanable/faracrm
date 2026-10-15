@@ -2,8 +2,9 @@
  * Зона «Дополнительно» вне режима студии — поля из общих настроек формы,
  * которых нет в разметке: дополнительные и обязательные (см. extraCells),
  * разложенные по сетке зоны (ExtraGrid), в рамке по её месту
- * (ExtraZoneFrame). Компонент поля — по типу из метаданных, как в
- * getComponentsFromChildren ядра. Нет таких полей — нет и зоны.
+ * (ExtraZoneFrame). Компонент поля — по виду клетки или типу из
+ * метаданных, как в getComponentsFromChildren ядра. Нет таких полей — нет
+ * и зоны.
  */
 import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,14 @@ export interface ExtraFieldsProps {
   layoutFields: string[];
 }
 
+/** Компонент поля клетки: вид из студии (widget="charUrl" → FieldCharUrl),
+ *  иначе по типу поля. */
+export function cellComponent(cell: ExtraCell, type: string) {
+  const { widget } = cell;
+  const name = widget ? widget.charAt(0).toUpperCase() + widget.slice(1) : type;
+  return FieldComponents['Field' + name];
+}
+
 export function ExtraFieldsDefault({
   cells,
   columns,
@@ -35,7 +44,7 @@ export function ExtraFieldsDefault({
 
   const items = cells.flatMap(cell => {
     const info = fields[cell.name];
-    const Component = info && FieldComponents['Field' + info.type];
+    const Component = info && cellComponent(cell, info.type);
     if (!Component) return [];
     return [
       <ExtraGridCell key={cell.name} cell={cell}>

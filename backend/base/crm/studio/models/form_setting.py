@@ -41,8 +41,11 @@ def _json_list(raw: str | None) -> list:
 
 
 def _is_cell(item: Any) -> bool:
-    """Клетка зоны: {"name": str}, x/y/w/h — целые от 1, необязательные."""
+    """Клетка зоны: {"name": str}, x/y/w/h — целые от 1, необязательные;
+    widget — вид поля на форме (charUrl), необязательный."""
     if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+        return False
+    if not isinstance(item.get("widget", ""), str):
         return False
     return all(
         isinstance(item.get(key, 1), int) and item.get(key, 1) >= 1

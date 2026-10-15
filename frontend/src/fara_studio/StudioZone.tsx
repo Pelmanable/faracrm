@@ -24,8 +24,8 @@ import {
 import { IconGripVertical, IconSparkles, IconX } from '@tabler/icons-react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { FormFieldsContext } from '@/components/Form/FormContext';
-import { FieldComponents } from '@/components/Form/Fields/Field';
 import { ExtraGrid, ExtraGridCell } from './zone/ExtraGrid';
+import { cellComponent } from './zone/ExtraFieldsDefault';
 import { ExtraZoneFrame } from './zone/ExtraZoneFrame';
 import {
   EXTRA_PLACEMENTS,
@@ -114,7 +114,7 @@ function FieldCell({
   });
   const drop = useCellDrop(`drop:${cell.name}`, cell, editor);
   const info = fields[cell.name];
-  const Component = info && FieldComponents['Field' + info.type];
+  const Component = info && cellComponent(cell, info.type);
   const label = editor.label(cell.name);
   const selected = editor.selected === cell.name;
 

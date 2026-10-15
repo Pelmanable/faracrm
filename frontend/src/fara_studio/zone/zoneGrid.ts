@@ -23,6 +23,8 @@ export interface StoredCell {
   y?: number;
   w?: number;
   h?: number;
+  /** Вид поля (widget формы, напр. charUrl); нет — по типу поля. */
+  widget?: string;
 }
 
 /** Поле на своём месте в сетке. */
@@ -32,6 +34,7 @@ export interface ExtraCell {
   y: number;
   w: number;
   h: number;
+  widget?: string;
 }
 
 /** Клетки из JSON-массива настроек; битое значение — пусто. */
@@ -103,6 +106,7 @@ export function placeCells(
       y: cell.y ?? 0,
       w: Math.min(cell.w ?? 1, size.columns),
       h: size.rows ? Math.min(cell.h ?? 1, size.rows) : (cell.h ?? 1),
+      widget: cell.widget,
     };
     (fits(full, placed, size) ? placed : pending).push(full);
   }

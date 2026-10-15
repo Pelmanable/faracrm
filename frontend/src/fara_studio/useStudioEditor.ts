@@ -67,6 +67,8 @@ export interface StudioEditor {
     relation?: string,
   ) => Promise<void>;
   resize: (name: string, w: number, h: number) => Promise<void>;
+  /** Вид поля в зоне (widget, напр. charUrl); undefined — по типу. */
+  setWidget: (name: string, widget: string | undefined) => Promise<void>;
   setGrid: (grid: ExtraGridSize) => Promise<void>;
   setPlacement: (placement: ExtraPlacement) => Promise<void>;
   removeFromForm: (name: string) => Promise<void>;
@@ -238,6 +240,14 @@ export function useStudioEditor(
     [cells, draft.grid, saveCells],
   );
 
+  const setWidget = useCallback(
+    (name: string, widget: string | undefined) =>
+      saveCells(
+        cells.map(cell => (cell.name === name ? { ...cell, widget } : cell)),
+      ),
+    [cells, saveCells],
+  );
+
   // Сохранённые места не трогаем: уменьшили сетку — не влезшие поля
   // встают в свободные клетки (placeCells), вернули — на свои места.
   const setGrid = useCallback(
@@ -342,6 +352,7 @@ export function useStudioEditor(
     place,
     addNew,
     resize,
+    setWidget,
     setGrid,
     setPlacement,
     removeFromForm,
