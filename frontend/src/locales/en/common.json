@@ -64,6 +64,7 @@
   "copyConfirmTitle": "Copy this record?",
   "copyConfirmText": "A copy of this record will be created and opened.",
   "autofillNotFound": "Nothing found",
+  "openLink": "Open link",
   "menu": {
     "communication": "Communication",
     "stock": "Stock",

@@ -85,7 +85,7 @@ export function ViewFormLeads(props: ViewFormProps) {
           <FormSection>
             <FormRow cols={2}>
               <Field name="company_id" label="Компания" />
-              <Field name="website" label="Вебсайт" />
+              <Field name="website" label="Вебсайт" widget="charUrl" />
             </FormRow>
             <Field name="active" label="Активен" />
           </FormSection>

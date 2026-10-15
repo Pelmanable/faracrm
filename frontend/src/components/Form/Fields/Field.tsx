@@ -2,6 +2,7 @@
 // import { FieldTypes } from '@/types/fields';
 import { FieldInteger } from './FieldInteger';
 import { FieldChar } from './FieldChar';
+import { FieldCharUrl } from './FieldCharUrl';
 import { FieldTranslatedChar } from './FieldTranslatedChar';
 import { FieldText } from './FieldText';
 import { FieldBoolean } from './FieldBoolean';
@@ -45,6 +46,8 @@ export const Field = (_props: FieldProps) => null;
 export const FieldComponents: Record<string, React.FC<any>> = {
   FieldInteger,
   FieldChar,
+  // Строка-ссылка с иконкой перехода на сайт (widget="charUrl").
+  FieldCharUrl,
   FieldTranslatedChar,
   FieldText,
   FieldBoolean,

@@ -64,6 +64,7 @@
   "copyConfirmTitle": "Копировать запись?",
   "copyConfirmText": "Будет создана копия этой записи, и вы перейдёте в неё.",
   "autofillNotFound": "Ничего не найдено",
+  "openLink": "Открыть ссылку",
   "menu": {
     "communication": "Общение",
     "stock": "Склад",
