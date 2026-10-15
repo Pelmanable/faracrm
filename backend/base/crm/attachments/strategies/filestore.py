@@ -10,6 +10,7 @@ import asyncio
 import os
 import hashlib
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from starlette.responses import FileResponse
@@ -234,11 +235,25 @@ class FileStoreStrategy(StorageStrategyBase):
             None, lambda: os.makedirs(dir_path, exist_ok=True)
         )
 
-        # 3. Асинхронная запись. "xb", а не "wb": путь содержит id записи и
-        # потому уникален, занятый файл означал бы ошибку — упасть лучше,
-        # чем затереть чужие байты.
-        async with aiofiles.open(file_path, mode="xb") as f:
-            await f.write(content)
+        # 3. Асинхронная запись. "xb", а не "wb": путь с id записи уникален
+        # только в пределах базы — файлстор мог остаться от пересозданной
+        # базы или делиться с другой. Чужой файл не трогаем, а добавляем к
+        # имени случайный uuid.
+        try:
+            async with aiofiles.open(file_path, mode="xb") as f:
+                await f.write(content)
+        except FileExistsError:
+            stem, ext = os.path.splitext(file_path)
+            taken_path = file_path
+            file_path = f"{stem}-{uuid.uuid4().hex}{ext}"
+            logger.warning(
+                "[file] Path already taken (stale or shared filestore?): "
+                "%s, writing to %s",
+                taken_path,
+                file_path,
+            )
+            async with aiofiles.open(file_path, mode="xb") as f:
+                await f.write(content)
 
         return {
             "storage_file_url": file_path,
