@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Group, Stack, Box, Paper, Title, Text } from '@mantine/core';
+import { Stack, Box, Paper, Title, Text } from '@mantine/core';
 import classes from './FormLayout.module.css';
 import { useExtensions } from '@/shared/extensions';
 
@@ -38,11 +38,7 @@ export function FormHeader({
       withBorder
       p={{ base: 'sm', sm: 'md' }}
       radius="md">
-      <Group
-        align="flex-start"
-        gap={{ base: 'md', sm: 'lg' } as any}
-        wrap="wrap"
-        className={classes.headerGroup}>
+      <Box className={classes.headerGroup}>
         {avatar && <Box className={classes.headerAvatar}>{avatar}</Box>}
 
         <Stack gap="sm" className={classes.headerContent}>
@@ -70,7 +66,7 @@ export function FormHeader({
         {/* RIGHT-pinned actions slot: ml=auto не трогает позиции
             avatar/Stack, просто прижимает себя к правому краю. */}
         {actions && <Box ml="auto">{actions}</Box>}
-      </Group>
+      </Box>
     </Paper>
   );
 }
@@ -90,17 +86,13 @@ export function FormSheet({ children, avatar }: FormSheetProps) {
   return (
     <>
       <Box className={classes.sheetContainer}>
-        <Group
-          align="flex-start"
-          gap={{ base: 'md', sm: 'xl' } as any}
-          wrap="wrap"
-          className={classes.sheetGroup}>
+        <Box className={classes.sheetGroup}>
           {avatar && <Box className={classes.sheetAvatar}>{avatar}</Box>}
 
           <Stack gap="sm" className={classes.sheetContent}>
             {children}
           </Stack>
-        </Group>
+        </Box>
       </Box>
 
       {/* Расширения после FormSheet */}

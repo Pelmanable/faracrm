@@ -78,8 +78,19 @@
   max-width: 240px;
 }
 
+/* Своя flex-строка, а не Mantine Group: в прод-сборке CSS Group идёт после
+   нашего, и его flex-direction: row перебивал колонку на мобильном —
+   аватар и поля вставали в ряд. */
 .headerGroup {
-  flex-wrap: nowrap;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-md);
+}
+
+@media (min-width: 768px) {
+  .headerGroup {
+    gap: var(--mantine-spacing-lg);
+  }
 }
 
 .headerContent {
@@ -104,8 +115,17 @@
   max-width: 240px;
 }
 
+/* См. .headerGroup. */
 .sheetGroup {
-  flex-wrap: nowrap;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mantine-spacing-md);
+}
+
+@media (min-width: 768px) {
+  .sheetGroup {
+    gap: var(--mantine-spacing-xl);
+  }
 }
 
 .sheetContent {
