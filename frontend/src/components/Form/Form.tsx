@@ -22,7 +22,11 @@ import {
 } from '@/services/api/crudTypes';
 import { FormFieldsContext, FormProvider } from './FormContext';
 import { FormSettingsProvider, LabelPosition } from './FormSettingsContext';
-import { getChildrenRecursive, getComponentsFromChildren } from './utils';
+import {
+  getChildrenRecursive,
+  getComponentsFromChildren,
+  getFieldLabels,
+} from './utils';
 import { Toolbar } from './Toolbar';
 import { useOnchange } from './hooks/useOnchange';
 import { getExtensionFields, ExtensionsContext } from '@/shared/extensions';
@@ -229,12 +233,16 @@ export const Form = <RecordType extends FaraRecord>({
     }
   }, [data, dataDefault]);
 
+  // Подписи из разметки — для списка незаполненных полей при сохранении
+  const labels = useMemo(() => getFieldLabels(children), [children]);
+
   // Мемоизируем value контекста чтобы избежать лишних ре-рендеров
   // children (M2M, O2M таблицы) при изменении простых полей (name, login и т.д.)
   const formFieldsContextValue = useMemo(
     () => ({
       model,
       fields: fieldsServer,
+      labels,
       setFields: setFieldsServer,
       handleFieldChange,
       onchangeFields,
@@ -243,6 +251,7 @@ export const Form = <RecordType extends FaraRecord>({
     [
       model,
       fieldsServer,
+      labels,
       setFieldsServer,
       handleFieldChange,
       onchangeFields,

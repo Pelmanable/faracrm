@@ -7,46 +7,8 @@ import { FaraRecord, VirtualId } from '@/services/api/crudTypes';
 import { useContext } from 'react';
 import { prepareValuesToSave } from './utils';
 import { useTranslation } from 'react-i18next';
+import { useRequiredFieldsCheck } from './hooks/useRequiredFieldsCheck';
 // import { useDispatch } from 'react-redux';
-
-/**
- * Валидирует обязательные поля формы
- * @returns true если валидация прошла, false если есть ошибки
- */
-const validateRequiredFields = (
-  form: UseFormReturnType<FaraRecord>,
-  fieldsServer: Record<string, any>,
-): boolean => {
-  let hasErrors = false;
-  const values = form.getValues();
-
-  for (const [fieldName, fieldInfo] of Object.entries(fieldsServer)) {
-    if (fieldInfo.required) {
-      const value = values[fieldName];
-      let error: string | null = null;
-
-      // Проверяем на пустое значение
-      if (value === null || value === undefined || value === '') {
-        error = 'Обязательное поле';
-      }
-      // Для Many2one проверяем что есть id
-      else if (fieldInfo.type === 'Many2one' && typeof value === 'object') {
-        if (!value?.id) {
-          error = 'Обязательное поле';
-        }
-      }
-
-      if (error) {
-        form.setFieldError(fieldName, error);
-        hasErrors = true;
-      } else {
-        form.setFieldError(fieldName, null);
-      }
-    }
-  }
-
-  return !hasErrors;
-};
 
 export function ButtonCreate({
   model,
@@ -77,13 +39,14 @@ export function ButtonCreate({
   const navigate = useNavigate();
   // const dispatch = useDispatch();
   const [create, { isLoading }] = useCreateMutation();
+  const checkRequired = useRequiredFieldsCheck();
   return (
     <Button
       loading={isLoading}
       variant="filled"
       onClick={async () => {
         // Валидация обязательных полей
-        if (!validateRequiredFields(form, fieldsServer)) {
+        if (!checkRequired()) {
           return; // Прерываем создание если есть ошибки
         }
 

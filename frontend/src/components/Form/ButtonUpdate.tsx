@@ -2,50 +2,11 @@ import { Button } from '@mantine/core';
 import { FormFieldsContext, useFormContext } from './FormContext';
 import { useUpdateMutation, crudApi } from '@/services/api/crudApi';
 import { useDispatch } from 'react-redux';
-import { FaraRecord, Identifier } from '@/services/api/crudTypes';
+import { Identifier } from '@/services/api/crudTypes';
 import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { prepareValuesToSave } from './utils';
-import { UseFormReturnType } from '@mantine/form';
-
-/**
- * Валидирует обязательные поля формы
- * @returns true если валидация прошла, false если есть ошибки
- */
-const validateRequiredFields = (
-  form: UseFormReturnType<FaraRecord>,
-  fieldsServer: Record<string, any>,
-): boolean => {
-  let hasErrors = false;
-  const values = form.getValues();
-
-  for (const [fieldName, fieldInfo] of Object.entries(fieldsServer)) {
-    if (fieldInfo.required) {
-      const value = values[fieldName];
-      let error: string | null = null;
-
-      // Проверяем на пустое значение
-      if (value === null || value === undefined || value === '') {
-        error = 'Обязательное поле';
-      }
-      // Для Many2one проверяем что есть id
-      else if (fieldInfo.type === 'Many2one' && typeof value === 'object') {
-        if (!value?.id) {
-          error = 'Обязательное поле';
-        }
-      }
-
-      if (error) {
-        form.setFieldError(fieldName, error);
-        hasErrors = true;
-      } else {
-        form.setFieldError(fieldName, null);
-      }
-    }
-  }
-
-  return !hasErrors;
-};
+import { useRequiredFieldsCheck } from './hooks/useRequiredFieldsCheck';
 
 export function ButtonUpdate({
   model,
@@ -66,10 +27,11 @@ export function ButtonUpdate({
   const [update] = useUpdateMutation();
   const dispatch = useDispatch();
   const [saving, setSaving] = useState(false);
+  const checkRequired = useRequiredFieldsCheck();
 
   const handleSave = async () => {
     // Валидация обязательных полей
-    if (!validateRequiredFields(form, fieldsServer)) {
+    if (!checkRequired()) {
       return;
     }
 

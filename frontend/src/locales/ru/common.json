@@ -63,6 +63,8 @@
   "copyFailed": "Не удалось скопировать",
   "copyConfirmTitle": "Копировать запись?",
   "copyConfirmText": "Будет создана копия этой записи, и вы перейдёте в неё.",
+  "requiredField": "Обязательное поле",
+  "requiredFieldsTitle": "Заполните обязательные поля",
   "autofillNotFound": "Ничего не найдено",
   "openLink": "Открыть ссылку",
   "menu": {

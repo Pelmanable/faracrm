@@ -9,6 +9,8 @@ export const [FormProvider, useFormContext] = createFormContext<FaraRecord>();
 export interface FormFieldsContextType {
   model: string;
   fields: Record<string, GetFormField>;
+  /** Подписи полей из разметки формы: имя → подпись */
+  labels?: Record<string, string>;
   /** Функция для обновления полей (для динамических расширений) */
   setFields?: Dispatch<SetStateAction<Record<string, GetFormField>>>;
   /** Обработчик изменения поля с поддержкой onchange */

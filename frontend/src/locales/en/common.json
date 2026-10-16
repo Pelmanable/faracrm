@@ -63,6 +63,8 @@
   "copyFailed": "Copy failed",
   "copyConfirmTitle": "Copy this record?",
   "copyConfirmText": "A copy of this record will be created and opened.",
+  "requiredField": "Required field",
+  "requiredFieldsTitle": "Fill in the required fields",
   "autofillNotFound": "Nothing found",
   "openLink": "Open link",
   "menu": {

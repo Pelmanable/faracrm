@@ -108,6 +108,34 @@ export const getChildrenRecursive = (
   return fieldsList;
 };
 
+/** Подписи полей из разметки (<Field name label />): имя → подпись. */
+export const getFieldLabels = (
+  children: React.ReactNode,
+): Record<string, string> => {
+  const labels: Record<string, string> = {};
+
+  const processChildren = (nodes: React.ReactNode) => {
+    Children.forEach(nodes, child => {
+      if (!isValidElement<Record<string, any>>(child)) return;
+
+      // Компоновка — ищем внутри, как getChildrenRecursive
+      if (isLayoutComponent(child)) {
+        processChildren(child.props.children);
+        processChildren(child.props.avatar);
+        processChildren(child.props.actions);
+        return;
+      }
+
+      if (child.props.name && child.props.label) {
+        labels[child.props.name] = child.props.label;
+      }
+    });
+  };
+
+  processChildren(children);
+  return labels;
+};
+
 /** Есть ли в разметке блок вкладок — для зоны «Дополнительно» вкладкой. */
 export const hasFormTabs = (children: React.ReactNode): boolean =>
   Children.toArray(children).some(
