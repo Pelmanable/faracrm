@@ -23,6 +23,7 @@ import {
   useGetChatConnectorsQuery,
   useSetChatDefaultConnectorMutation,
 } from '@/services/api/chat';
+import { useHideLayoutHeader } from '@/shared/extensions/layoutHeader';
 import { useChatWebSocketContext } from '../context';
 import { useChatFilter } from '../hooks/useChatFilter';
 import { ChatList, getMessagePreview } from './ChatList';
@@ -55,6 +56,9 @@ export function ChatPage({
   const isMobile = useMediaQuery('(max-width: 768px)');
   // На мобильном: true = показываем сайдбар, false = показываем чат
   const [showSidebar, setShowSidebar] = useState(true);
+  // Открытый чат на мобильном — во весь экран, без шапки приложения
+  // (назад к списку — стрелка в шапке чата).
+  useHideLayoutHeader(!!isMobile && !showSidebar && !!selectedChat);
   const [selectedConnectorId, setSelectedConnectorId] = useState<number | null>(
     null,
   );

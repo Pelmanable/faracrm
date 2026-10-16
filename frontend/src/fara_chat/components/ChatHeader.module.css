@@ -9,6 +9,13 @@
   border-bottom-color: var(--mantine-color-dark-4);
 }
 
+/* Мобильный: поля почти нулевые — место под имя чата. */
+@media (max-width: 768px) {
+  .container {
+    padding: 0.25rem;
+  }
+}
+
 .onlineIndicator {
   position: absolute;
   bottom: 0;

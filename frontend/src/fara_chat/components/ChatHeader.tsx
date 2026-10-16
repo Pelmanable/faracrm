@@ -10,6 +10,8 @@ import {
   IconBell,
   IconPinFilled,
   IconArrowLeft,
+  IconEye,
+  IconCheck,
 } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { Chat } from '@/services/api/chat';
@@ -49,6 +51,10 @@ export function ChatHeader({
   // Звонить можно только юзеру, не партнёру (нет гарантии WebSocket).
   const currentUserId = useSelector(
     (s: RootState) => s.auth.session?.user_id?.id ?? 0,
+  );
+  // «Показывать удалённые» — только админам, как в ViewSettingsPopover.
+  const isAdmin = useSelector(
+    (s: RootState) => !!s.auth.session?.user_id?.is_admin,
   );
   const otherUser =
     chat.chat_type === 'direct'
@@ -158,42 +164,46 @@ export function ChatHeader({
             <CallButton peer={{ id: otherUser.id, name: otherUser.name }} />
           )}
 
-          {/* Pinned messages */}
-          <ActionIcon
-            variant="subtle"
-            size="lg"
-            onClick={onPinnedMessages}
-            title={t('pinnedMessages')}>
-            <IconPinFilled size={20} />
-          </ActionIcon>
+          {/* Десктоп: действия иконками. На мобильном они в меню «⋮» —
+              место под имя чата. */}
+          <Group gap="xs" wrap="nowrap" visibleFrom="sm">
+            {/* Pinned messages */}
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              onClick={onPinnedMessages}
+              title={t('pinnedMessages')}>
+              <IconPinFilled size={20} />
+            </ActionIcon>
 
-          {/* Search */}
-          <ActionIcon
-            variant="subtle"
-            size="lg"
-            onClick={onSearch}
-            title={t('search')}>
-            <IconSearch size={20} />
-          </ActionIcon>
+            {/* Search */}
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              onClick={onSearch}
+              title={t('search')}>
+              <IconSearch size={20} />
+            </ActionIcon>
 
-          {/* Soft-delete: show deleted messages (admin only) */}
-          <ViewSettingsPopover
-            size="lg"
-            variant="subtle"
-            title={t('chatSettings')}
-            options={[
-              {
-                key: 'showDeletedMessages',
-                label: t(
-                  'showDeletedMessages',
-                  'Показывать удалённые сообщения',
-                ),
-                checked: showDeletedMessages,
-                onChange: v => onToggleShowDeletedMessages?.(v),
-                adminOnly: true,
-              },
-            ]}
-          />
+            {/* Soft-delete: show deleted messages (admin only) */}
+            <ViewSettingsPopover
+              size="lg"
+              variant="subtle"
+              title={t('chatSettings')}
+              options={[
+                {
+                  key: 'showDeletedMessages',
+                  label: t(
+                    'showDeletedMessages',
+                    'Показывать удалённые сообщения',
+                  ),
+                  checked: showDeletedMessages,
+                  onChange: v => onToggleShowDeletedMessages?.(v),
+                  adminOnly: true,
+                },
+              ]}
+            />
+          </Group>
 
           {/* More options menu */}
           <Menu position="bottom-end" withArrow>
@@ -203,6 +213,33 @@ export function ChatHeader({
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown>
+              {/* Мобильный: действия, которые на десктопе иконками в шапке */}
+              <Box hiddenFrom="sm">
+                <Menu.Item
+                  leftSection={<IconPinFilled size={16} />}
+                  onClick={onPinnedMessages}>
+                  {t('pinnedMessages')}
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={<IconSearch size={16} />}
+                  onClick={onSearch}>
+                  {t('search')}
+                </Menu.Item>
+                {isAdmin && (
+                  <Menu.Item
+                    leftSection={<IconEye size={16} />}
+                    rightSection={
+                      showDeletedMessages ? <IconCheck size={16} /> : undefined
+                    }
+                    onClick={() =>
+                      onToggleShowDeletedMessages?.(!showDeletedMessages)
+                    }>
+                    {t('showDeletedMessages', 'Показывать удалённые сообщения')}
+                  </Menu.Item>
+                )}
+                <Menu.Divider />
+              </Box>
+
               {/* Добавление участников теперь через настройки чата */}
 
               <Menu.Item leftSection={<IconBell size={16} />}>

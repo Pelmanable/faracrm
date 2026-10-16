@@ -9,18 +9,35 @@
   border-top-color: var(--mantine-color-dark-4);
 }
 
+/* Мобильный: строка ввода почти во всю ширину экрана. */
+@media (max-width: 768px) {
+  .container {
+    padding: 0.375rem 0.25rem;
+  }
+}
+
+/* Поле как в Telegram: одна закруглённая рамка, кнопки внутри неё. */
+.field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 1.5rem;
+  background-color: var(--mantine-color-body);
+}
+
+[data-mantine-color-scheme='dark'] .field {
+  border-color: var(--mantine-color-dark-4);
+}
+
+.field:focus-within {
+  border-color: var(--mantine-color-blue-5);
+}
+
 .input {
   flex: 1;
-}
-
-.input input {
-  border-radius: 1.5rem;
-  padding-left: 1rem;
-  padding-right: 2.5rem;
-}
-
-.input input:focus {
-  border-color: var(--mantine-color-blue-5);
+  min-width: 0;
 }
 
 .attachmentsPreview {

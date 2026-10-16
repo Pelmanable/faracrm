@@ -13,6 +13,7 @@ import {
   setLayoutAsideNode,
   useLayoutAsideWidth,
 } from '@/shared/extensions/layoutAside';
+import { useLayoutHeaderHidden } from '@/shared/extensions/layoutHeader';
 import { ActivityNotification } from '@/fara_activity/ActivityNotification';
 import { ChatWebSocketProvider } from '@/fara_chat/context';
 import { CallProvider } from '@/fara_chat/context/CallContext';
@@ -70,6 +71,8 @@ export function ModernLayout() {
   // Панель справа от модулей (LayoutAside, напр. студия): основная
   // область сужается, шапка остаётся открытой.
   const asideWidth = useLayoutAsideWidth();
+  // Страница может свернуть шапку (открытый чат на телефоне).
+  const headerHidden = useLayoutHeaderHidden();
 
   // Определяем активную группу по текущему URL
   useEffect(() => {
@@ -126,7 +129,7 @@ export function ModernLayout() {
       <CallProvider>
         <NotificationListener />
         <AppShell
-        header={{ height: { base: 48, sm: 60 } }}
+        header={{ height: { base: 48, sm: 60 }, collapsed: headerHidden }}
         navbar={
           isInChat
             ? {
@@ -144,7 +147,10 @@ export function ModernLayout() {
           breakpoint: 'sm',
           collapsed: { mobile: !asideWidth, desktop: !asideWidth },
         }}
-        padding={{ base: 'xs', sm: 'md' }}
+        // Чат на мобильном — без полей: список и переписка во всю ширину.
+        // Строкой, не 0: base = 0 Mantine пропускает (if (padding.base)),
+        // и отступ под шапку у основной области пропадает.
+        padding={{ base: isInChat ? '0px' : 'xs', sm: 'md' }}
         transitionDuration={200}
         transitionTimingFunction="ease">
         <AppShell.Header className={classes.header}>

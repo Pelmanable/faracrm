@@ -362,6 +362,62 @@ export function ChatInput({
     setAttachments([]);
   };
 
+  const canSend = hasText || attachments.length > 0 || !!pendingVoice;
+
+  // Кнопки, общие для письма и обычного сообщения.
+  const attachMenu = (
+    <Menu position="top-start" withArrow>
+      <Menu.Target>
+        <ActionIcon
+          variant="subtle"
+          size="lg"
+          disabled={disabled || !canAddMore}
+          title={t('attach')}>
+          <IconPaperclip size={20} />
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          leftSection={<IconPhoto size={16} />}
+          onClick={() => document.getElementById('image-input')?.click()}>
+          {t('attachImage')}
+        </Menu.Item>
+        <Menu.Item
+          leftSection={<IconFile size={16} />}
+          onClick={() => document.getElementById('file-input')?.click()}>
+          {t('attachFile')}
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+
+  // Переключатель коннектора — иконка канала (subtle, как скрепка).
+  const connectorSwitcher = connectors &&
+    connectors.length > 1 &&
+    onConnectorSelect && (
+      <ConnectorSwitcher
+        connectors={connectors}
+        selectedConnectorId={connectorId ?? null}
+        onSelect={onConnectorSelect}
+        defaultConnectorId={defaultConnectorId ?? null}
+        onSetDefault={onSetDefaultConnector}
+        disabled={disabled}
+      />
+    );
+
+  const sendButton = (
+    <Tooltip label={t('send')} position="top">
+      <ActionIcon
+        variant="filled"
+        size="lg"
+        radius="xl"
+        onClick={handleSend}
+        disabled={!canSend || disabled}>
+        <IconSend size={18} />
+      </ActionIcon>
+    </Tooltip>
+  );
+
   return (
     <Box className={styles.container}>
       {attachments.length > 0 && (
@@ -424,38 +480,12 @@ export function ChatInput({
         )}
       </FileButton>
 
-      <Group
-        gap="xs"
-        wrap="nowrap"
-        align={isEmail ? 'flex-end' : 'center'}>
-        <Menu position="top-start" withArrow>
-          <Menu.Target>
-            <ActionIcon
-              variant="subtle"
-              size="lg"
-              disabled={disabled || !canAddMore}
-              title={t('attach')}>
-              <IconPaperclip size={20} />
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item
-              leftSection={<IconPhoto size={16} />}
-              onClick={() => document.getElementById('image-input')?.click()}>
-              {t('attachImage')}
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconFile size={16} />}
-              onClick={() => document.getElementById('file-input')?.click()}>
-              {t('attachFile')}
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-
-        {isEmail ? (
-          // Письмо — тема (хедер) + rich-редактор (жирный/курсив/списки).
-          // key=composerKey ремонтит редактор после отправки для очистки.
-          // Enter = перенос строки, Ctrl/Cmd+Enter = отправка.
+      {isEmail ? (
+        // Письмо — тема (хедер) + rich-редактор (жирный/курсив/списки).
+        // key=composerKey ремонтит редактор после отправки для очистки.
+        // Enter = перенос строки, Ctrl/Cmd+Enter = отправка.
+        <Group gap="xs" wrap="nowrap" align="flex-end">
+          {attachMenu}
           <Box style={{ flex: 1, minWidth: 0 }}>
             <TextInput
               value={subject}
@@ -473,82 +503,67 @@ export function ChatInput({
               disabled={disabled}
             />
           </Box>
-        ) : pendingVoice ? null : (
-          // Пока голосовое ждёт отправки, поля нет: уйдёт только запись, а на
-          // мобильном плееру и кнопке «Отправить» нужна вся строка (#40).
-          <TextInput
-            ref={inputRef}
-            className={styles.input}
-            placeholder={t('typeMessage')}
-            value={message}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            disabled={disabled}
-            rightSection={
+          {connectorSwitcher}
+          {sendButton}
+        </Group>
+      ) : (
+        // Как в Telegram: одно закруглённое поле, кнопки внутри него; справа
+        // микрофон, пока отправлять нечего, иначе на его месте «Отправить».
+        <Group gap="xs" wrap="nowrap">
+          {/* Пока голосовое ждёт отправки, поля нет: уйдёт только запись, а
+              на мобильном плееру и кнопке «Отправить» нужна вся строка (#40). */}
+          {!pendingVoice && (
+            <Box className={styles.field}>
               <Popover
                 opened={emojiOpened}
                 onChange={setEmojiOpened}
-                position="top-end"
+                position="top-start"
                 withArrow
                 shadow="md">
                 <Popover.Target>
                   <ActionIcon
                     variant="subtle"
-                    size="sm"
+                    size="lg"
                     disabled={disabled}
                     title={t('emoji')}
                     onClick={() => setEmojiOpened(o => !o)}>
-                    <IconMoodSmile size={18} />
+                    <IconMoodSmile size={20} />
                   </ActionIcon>
                 </Popover.Target>
                 <Popover.Dropdown p={0}>
                   <EmojiPicker onSelect={handleEmojiSelect} />
                 </Popover.Dropdown>
               </Popover>
-            }
-          />
-        )}
-
-        {/* Голосовое — только для обычного ввода (не для писем) */}
-        {!isEmail && (
-          <VoiceRecorder
-            key={voiceResetKey}
-            onRecorded={handleVoiceRecorded}
-            onRecordingReady={setPendingVoice}
-            onCancel={() => {
-              setIsRecording(false);
-              setPendingVoice(null);
-            }}
-            disabled={disabled || attachments.length > 0}
-            showSendButton={false}
-          />
-        )}
-
-        {/* Переключатель коннектора — иконка канала (subtle, как микрофон). */}
-        {connectors && connectors.length > 1 && onConnectorSelect && (
-          <ConnectorSwitcher
-            connectors={connectors}
-            selectedConnectorId={connectorId ?? null}
-            onSelect={onConnectorSelect}
-            defaultConnectorId={defaultConnectorId ?? null}
-            onSetDefault={onSetDefaultConnector}
-            disabled={disabled}
-          />
-        )}
-
-        <Tooltip label={t('send')} position="top">
-          <ActionIcon
-            variant="filled"
-            size="lg"
-            onClick={handleSend}
-            disabled={
-              (!hasText && attachments.length === 0 && !pendingVoice) ||
-              disabled
-            }>
-            <IconSend size={18} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
+              <TextInput
+                ref={inputRef}
+                variant="unstyled"
+                className={styles.input}
+                placeholder={t('typeMessage')}
+                value={message}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                disabled={disabled}
+              />
+              {attachMenu}
+              {connectorSwitcher}
+            </Box>
+          )}
+          {!hasText && attachments.length === 0 && (
+            <VoiceRecorder
+              key={voiceResetKey}
+              onRecorded={handleVoiceRecorded}
+              onRecordingReady={setPendingVoice}
+              onCancel={() => {
+                setIsRecording(false);
+                setPendingVoice(null);
+              }}
+              disabled={disabled}
+              showSendButton={false}
+            />
+          )}
+          {canSend && sendButton}
+        </Group>
+      )}
 
       <ImageGalleryModal
         opened={galleryOpened}
