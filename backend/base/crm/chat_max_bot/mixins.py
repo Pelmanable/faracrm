@@ -56,6 +56,8 @@ class ChatConnectorMaxBotMixin(_Base):
                 "webhook_url": webhook_url,
                 "webhook_hash": webhook_hash,
                 "category": "messenger",
+                # Маркетинг: ролики — видео-сообщением в чат
+                "marketing": True,
             }
 
             # Бот адресует по user_id (НЕ по номеру) → отдельный тип `max_bot`

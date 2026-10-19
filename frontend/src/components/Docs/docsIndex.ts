@@ -47,6 +47,7 @@ export type DocGroupKey =
   | 'communication'
   | 'crm'
   | 'sales'
+  | 'marketing'
   | 'stock'
   | 'projects'
   | 'files'
@@ -74,6 +75,7 @@ export const DOC_GROUP_ORDER: DocGroupKey[] = [
   'communication',
   'crm',
   'sales',
+  'marketing',
   'stock',
   'projects',
   'files',
@@ -86,6 +88,7 @@ export const DOC_GROUP_LABEL_KEY: Record<DocGroupKey, string> = {
   communication: 'docs:groups.communication',
   crm: 'docs:groups.crm',
   sales: 'docs:groups.sales',
+  marketing: 'docs:groups.marketing',
   stock: 'docs:groups.stock',
   projects: 'docs:groups.projects',
   files: 'docs:groups.files',
@@ -193,6 +196,22 @@ export const META: Record<string, DocMeta> = {
     group: 'stock',
     summary: 'Номенклатура, категории и единицы измерения.',
     videos: [soon('Заведение товара', '3:30')],
+  },
+
+  // ── Маркетинг ──
+  marketing_publication: {
+    title: 'Маркетинг: ролики, публикации и повторы',
+    group: 'marketing',
+    summary:
+      'Ролики по расписанию в Telegram, ВКонтакте, YouTube, Rutube и Instagram: посты, сторис, повторы.',
+    videos: [],
+  },
+  marketing_channel: {
+    title: 'Маркетинг: подключение каналов',
+    group: 'marketing',
+    summary:
+      'Telegram (бот или аккаунт), ВКонтакте, YouTube, Rutube и Instagram: настройка у площадок, прокси.',
+    videos: [],
   },
 
   // ── Проекты ──
@@ -315,6 +334,9 @@ export const ALIASES: Record<string, string> = {
   sale_line: 'sales',
   tax: 'sales',
   contract: 'sales',
+  // Маркетинг: ролики и правила — в статье про публикации
+  marketing_video: 'marketing_publication',
+  marketing_rule: 'marketing_publication',
   // Склад
   category: 'products',
   uom: 'products',

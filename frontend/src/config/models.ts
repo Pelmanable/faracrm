@@ -352,6 +352,52 @@ export const modelsConfig: Record<string, ModelConfig> = {
       })),
   },
 
+  // === Marketing ===
+  marketing_video: {
+    menu: MenuGroups.marketing,
+    list: () =>
+      import('@/fara_marketing/List').then(m => ({
+        default: m.ViewListMarketingVideo,
+      })),
+    form: () =>
+      import('@/fara_marketing/Form').then(m => ({
+        default: m.ViewFormMarketingVideo,
+      })),
+  },
+  marketing_channel: {
+    menu: MenuGroups.marketing,
+    list: () =>
+      import('@/fara_marketing/List').then(m => ({
+        default: m.ViewListMarketingChannel,
+      })),
+    form: () =>
+      import('@/fara_marketing/Form').then(m => ({
+        default: m.ViewFormMarketingChannel,
+      })),
+  },
+  marketing_publication: {
+    menu: MenuGroups.marketing,
+    list: () =>
+      import('@/fara_marketing/List').then(m => ({
+        default: m.ViewListMarketingPublication,
+      })),
+    form: () =>
+      import('@/fara_marketing/Form').then(m => ({
+        default: m.ViewFormMarketingPublication,
+      })),
+  },
+  marketing_rule: {
+    menu: MenuGroups.marketing,
+    list: () =>
+      import('@/fara_marketing/List').then(m => ({
+        default: m.ViewListMarketingRule,
+      })),
+    form: () =>
+      import('@/fara_marketing/Form').then(m => ({
+        default: m.ViewFormMarketingRule,
+      })),
+  },
+
   // === Files ===
   attachments: {
     menu: MenuGroups.files,

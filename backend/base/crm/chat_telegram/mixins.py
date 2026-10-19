@@ -51,6 +51,8 @@ class ChatConnectorTelegramMixin(_Base):
                 "webhook_url": webhook_url,
                 "webhook_hash": webhook_hash,
                 "category": "messenger",
+                # Маркетинг: ролики — видео-сообщением в группу или канал
+                "marketing": True,
             }
         return {}
 

@@ -1,0 +1,76 @@
+{
+  "menu": {
+    "marketing_video": "Videos",
+    "marketing_channel": "Channels",
+    "marketing_publication": "Publications",
+    "marketing_rule": "Repeat rules"
+  },
+  "sections": {
+    "video": "Video",
+    "video_publications": "Where it went: status by channel",
+    "channel": "Channel",
+    "chat": "Via connector (Telegram, MAX, VK)",
+    "oauth": "Connection (Telegram account, YouTube, Rutube, Instagram)",
+    "publication": "Publication",
+    "rule": "Rule",
+    "schedule": "Schedule"
+  },
+  "fields": {
+    "id": "ID",
+    "name": "Name",
+    "file": "Video",
+    "caption": "Caption",
+    "connector_id": "Connector",
+    "chat_id": "Group or channel ID",
+    "video_id": "Video",
+    "channel_id": "Channel",
+    "rule_id": "Rule",
+    "kind": "Format",
+    "date_planned": "Planned",
+    "state": "State",
+    "date_done": "Published",
+    "error": "Error",
+    "active": "Active",
+    "video_ids": "Videos",
+    "channel_ids": "Channels",
+    "interval_number": "Every",
+    "interval_type": "Interval",
+    "date_next": "Next run",
+    "last_video_id": "Last video",
+    "type": "Type",
+    "client_id": "Client ID",
+    "client_secret": "Client Secret",
+    "proxy_url": "Proxy",
+    "authorized": "Connected",
+    "url": "Link",
+    "publication_ids": "Publications"
+  },
+  "hints": {
+    "connector_id": "Only connectors that support marketing: Telegram and MAX publish a message, VK — a community story",
+    "chat_id": "Telegram: -100… or @username; MAX — chat ID. Not needed for VK",
+    "client_id": "Telegram account — api_id and api_hash from my.telegram.org; YouTube — OAuth client ID from Google Cloud; Instagram — Instagram App ID. Redirect URI: <API URL>/marketing/youtube/callback or /marketing/instagram/callback",
+    "proxy_url": "If the server cannot reach the platform directly: http://user:pass@host:port"
+  },
+  "rutube": {
+    "login": "Sign in to Rutube",
+    "username": "Login (email or phone)",
+    "password": "Password",
+    "password_hint": "The password goes to Rutube and is not stored — only the token is",
+    "sign_in": "Sign in"
+  },
+  "telegram": {
+    "login": "Sign in to Telegram",
+    "phone": "Account phone",
+    "code": "Code",
+    "code_hint": "The code arrives in the Telegram app of this account. Do not forward it in messages — Telegram will reset the code",
+    "password": "Two-step verification password",
+    "send_code": "Get code",
+    "sign_in": "Sign in"
+  },
+  "connect": {
+    "youtube": "Connect YouTube",
+    "instagram": "Connect Instagram",
+    "error": "Could not connect the channel",
+    "network": "Server unavailable"
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "menu": {
+    "marketing_video": "Ролики",
+    "marketing_channel": "Каналы",
+    "marketing_publication": "Публикации",
+    "marketing_rule": "Правила повтора"
+  },
+  "sections": {
+    "video": "Ролик",
+    "video_publications": "Где выходил: статус по каналам",
+    "channel": "Канал",
+    "chat": "Через коннектор (Telegram, MAX, ВКонтакте)",
+    "oauth": "Подключение (Telegram-аккаунт, YouTube, Rutube, Instagram)",
+    "publication": "Публикация",
+    "rule": "Правило",
+    "schedule": "Расписание"
+  },
+  "fields": {
+    "id": "Ид",
+    "name": "Название",
+    "file": "Видео",
+    "caption": "Подпись",
+    "connector_id": "Коннектор",
+    "chat_id": "Id группы или канала",
+    "video_id": "Ролик",
+    "channel_id": "Канал",
+    "rule_id": "Правило",
+    "kind": "Формат",
+    "date_planned": "Когда",
+    "state": "Статус",
+    "date_done": "Опубликована",
+    "error": "Ошибка",
+    "active": "Активно",
+    "video_ids": "Ролики",
+    "channel_ids": "Каналы",
+    "interval_number": "Каждые",
+    "interval_type": "Интервал",
+    "date_next": "Следующий запуск",
+    "last_video_id": "Последний ролик",
+    "type": "Тип",
+    "client_id": "Client ID",
+    "client_secret": "Client Secret",
+    "proxy_url": "Прокси",
+    "authorized": "Подключён",
+    "url": "Ссылка",
+    "publication_ids": "Публикации"
+  },
+  "hints": {
+    "connector_id": "Только коннекторы, которые поддерживают маркетинг: Telegram и MAX публикуют сообщением, ВКонтакте — сторис сообщества",
+    "chat_id": "Telegram: -100… или @username; MAX — id чата. Для ВКонтакте не нужен",
+    "client_id": "Telegram-аккаунт — api_id и api_hash с my.telegram.org; YouTube — Client ID OAuth-клиента из Google Cloud; Instagram — Instagram App ID. Адрес возврата: <адрес API>/marketing/youtube/callback или /marketing/instagram/callback",
+    "proxy_url": "Если сервер не видит площадку напрямую: http://user:pass@host:port"
+  },
+  "rutube": {
+    "login": "Войти в Rutube",
+    "username": "Логин (почта или телефон)",
+    "password": "Пароль",
+    "password_hint": "Пароль уходит в Rutube и не сохраняется — хранится только токен",
+    "sign_in": "Войти"
+  },
+  "telegram": {
+    "login": "Войти в Telegram",
+    "phone": "Телефон аккаунта",
+    "code": "Код",
+    "code_hint": "Код придёт в приложение Telegram на этом аккаунте. Не пересылайте его в сообщениях — Telegram сбросит код",
+    "password": "Пароль двухфакторной защиты",
+    "send_code": "Получить код",
+    "sign_in": "Войти"
+  },
+  "connect": {
+    "youtube": "Подключить YouTube",
+    "instagram": "Подключить Instagram",
+    "error": "Не удалось подключить канал",
+    "network": "Сервер недоступен"
+  }
+}

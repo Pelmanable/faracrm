@@ -210,10 +210,11 @@ class TelegramStrategy(ChatStrategyBase):
         recipients_ids: list | None = None,
     ) -> Tuple[str, str]:
         """
-        Отправить изображение или документ в Telegram.
+        Отправить изображение, видео или документ в Telegram.
 
-        Telegram API: sendPhoto / sendDocument
+        Telegram API: sendPhoto / sendVideo / sendDocument
         https://core.telegram.org/bots/api#sendphoto
+        https://core.telegram.org/bots/api#sendvideo
         https://core.telegram.org/bots/api#senddocument
         """
         if not chat_id:
@@ -225,6 +226,10 @@ class TelegramStrategy(ChatStrategyBase):
         if mimetype.startswith("image/"):
             method = "sendPhoto"
             file_field = "photo"
+        elif mimetype.startswith("video/"):
+            # sendVideo — с плеером; sendDocument пришёл бы файлом
+            method = "sendVideo"
+            file_field = "video"
         else:
             method = "sendDocument"
             file_field = "document"

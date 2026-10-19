@@ -173,6 +173,10 @@ const modelToNamespace: Record<string, string> = {
   activity_type: 'activity',
   marketplace_app: 'marketplace',
   marketplace_purchase: 'marketplace',
+  marketing_video: 'marketing',
+  marketing_channel: 'marketing',
+  marketing_publication: 'marketing',
+  marketing_rule: 'marketing',
 };
 
 const modelLabels: Record<string, string> = {

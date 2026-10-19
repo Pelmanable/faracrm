@@ -79,6 +79,9 @@ class ChatConnectorVkMixin(_Base):
                 "webhook_url": webhook_url,
                 "webhook_hash": webhook_hash,
                 "category": "messenger",
+                # Маркетинг: ролики — сторис сообщества (своя стратегия
+                # в marketing/strategies/vk.py)
+                "marketing": True,
             }
 
             # VK-сообщество адресует клиента по user_id (peer_id), НЕ по номеру →

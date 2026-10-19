@@ -110,6 +110,10 @@ import ruStudio from './fara_studio/locales/ru.json';
 import enExcel from './fara_excel/locales/en.json';
 import ruExcel from './fara_excel/locales/ru.json';
 
+// fara_marketing — ролики по расписанию в группы и каналы
+import enMarketing from './fara_marketing/locales/en.json';
+import ruMarketing from './fara_marketing/locales/ru.json';
+
 
 // ============ Склейка переводов ============
 const resources = {
@@ -141,6 +145,7 @@ const resources = {
     docs: enDocs,
     excel: enExcel,
     studio: enStudio,
+    marketing: enMarketing,
   },
   ru: {
     common: ruCommon,
@@ -169,6 +174,7 @@ const resources = {
     docs: ruDocs,
     excel: ruExcel,
     studio: ruStudio,
+    marketing: ruMarketing,
   },
 };
 
@@ -205,6 +211,7 @@ i18n
       'docs',
       'excel',
       'studio',
+      'marketing',
     ],
 
     interpolation: {

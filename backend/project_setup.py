@@ -134,6 +134,14 @@ from backend.base.crm.contract.models.company_ext import CompanyContractMixin
 from backend.base.crm.contract.models.requisites_ext import RequisitesMixin
 from backend.base.crm.contract.models.sale_ext import SaleContractMixin
 
+# Marketing
+from backend.base.crm.marketing.models import (
+    MarketingVideo,
+    MarketingChannel,
+    MarketingPublication,
+    MarketingRule,
+)
+
 # @extend(App): флаг «установлено» у строки реестра приложений
 from backend.base.crm.apps_install.models.app_ext import (  # noqa: F401
     AppInstalled,
@@ -309,6 +317,7 @@ from backend.base.crm.payment.app import PaymentApp
 from backend.base.crm.payment_tinkoff.app import PaymentTinkoffApp
 from backend.base.crm.marketplace.app import MarketplaceApp
 from backend.base.crm.excel.app import ExcelApp
+from backend.base.crm.marketing.app import MarketingApp
 
 # services
 from backend.base.system.logger.app import LoggerService
@@ -419,6 +428,11 @@ class Models(ModelsCore, ExtensibleMixin):
     marketplace_app = MarketplaceApplication
     marketplace_purchase = MarketplacePurchase
     marketplace_review = MarketplaceReview
+    # marketing
+    marketing_video = MarketingVideo
+    marketing_channel = MarketingChannel
+    marketing_publication = MarketingPublication
+    marketing_rule = MarketingRule
 
 
 class Apps(AppsCore):
@@ -471,6 +485,7 @@ class Apps(AppsCore):
     payment_tinkoff = PaymentTinkoffApp()
     marketplace = MarketplaceApp()
     excel = ExcelApp()
+    marketing = MarketingApp()
 
     dotorm_crud_auto = DotormCrudAutoService()
     # alise

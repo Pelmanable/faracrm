@@ -85,6 +85,14 @@ class ChatConnector(AuditMixin, DotModel):
         description="Категория: messenger, phone, email, social",
     )
 
+    # Умеет ли коннектор публиковать ролики модуля «Маркетинг» — выставляет
+    # onchange типа в модуле провайдера (как category); влияет только на
+    # список коннекторов в канале маркетинга.
+    marketing: bool = Boolean(
+        default=False,
+        description="Поддерживается в маркетинге",
+    )
+
     # Тип контакта, с которым работает коннектор
     # WhatsApp → phone, Telegram → telegram, Email → email, и т.д.
     contact_type_id: "ContactType | None" = Many2one(
@@ -262,10 +270,12 @@ class ChatConnector(AuditMixin, DotModel):
             filter=[("name", "=", self.type)],
             fields=["id", "name"],
         )
+        # marketing сбрасываем: модули провайдеров, которые маркетинг умеют,
+        # ставят True своим onchange_type_<тип> — он идёт после этого
         if first_type:
-            return {"contact_type_id": first_type}
+            return {"contact_type_id": first_type, "marketing": False}
         else:
-            return {"contact_type_id": None}
+            return {"contact_type_id": None, "marketing": False}
 
     @hybridmethod
     async def create(

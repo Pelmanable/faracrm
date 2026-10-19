@@ -149,6 +149,16 @@ const menuTree: GroupConfig[] = [
   },
 
   {
+    group: 'marketing',
+    submenus: [
+      { model: 'marketing_publication' },
+      { model: 'marketing_rule' },
+      { model: 'marketing_video' },
+      { model: 'marketing_channel' },
+    ],
+  },
+
+  {
     group: 'telephony',
     submenus: [
       {

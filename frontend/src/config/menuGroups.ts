@@ -10,6 +10,7 @@ import {
   IconPhoneCall,
   IconCheckupList,
   IconBuildingStore,
+  IconSpeakerphone,
 } from '@tabler/icons-react';
 
 export const MenuGroups = {
@@ -74,6 +75,14 @@ export const MenuGroups = {
     Icon: IconChartBar,
     order: 50,
     visibleForRoles: ['sale_user', 'sale_manager', 'sale_admin'] as string[],
+  },
+  marketing: {
+    id: 'category_marketing',
+    label: 'Маркетинг',
+    labelKey: 'common:menu.marketing',
+    Icon: IconSpeakerphone,
+    order: 55,
+    visibleForRoles: ['marketing_user'] as string[],
   },
   telephony: {
     id: 'category_telephony',
