@@ -142,5 +142,10 @@
     "maxSize": "Maximum size: {{size}}",
     "maxSizeShort": "Max: {{size}}",
     "maxFilesAndSize": "Up to {{files}} files, {{size}} each"
+  },
+  "appVersion": {
+    "badge": "Outdated version",
+    "outdated": "You are using an outdated version of the interface.",
+    "reload": "Reload page"
   }
 }

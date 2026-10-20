@@ -1,5 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { Center, Stack, Text, ThemeIcon } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
+import { useTranslation } from 'react-i18next';
 import LoadingScreen from '@components/LoadingScreen/LoadingScreen';
 import { useSelector } from 'react-redux';
 import { selectIsLoggedIn } from '@/slices/authSlice';
@@ -68,6 +71,30 @@ function reloadIfVisible() {
   window.location.reload();
 }
 
+// Вместо приложения после входа/выхода в соседней вкладке. Без запросов:
+// видно, пока вкладка в фоне (превью вкладки) и мгновение до перезагрузки.
+function AuthChangedScreen() {
+  const { t } = useTranslation('common');
+  return (
+    <Center h="100vh" px="md">
+      <Stack align="center" gap="xs" maw={360}>
+        <ThemeIcon variant="light" size={56} radius="xl">
+          <IconRefresh size={28} />
+        </ThemeIcon>
+        <Text fw={500} ta="center">
+          {t('auth.changedElsewhere', 'Вы вошли или вышли в другой вкладке')}
+        </Text>
+        <Text size="sm" c="dimmed" ta="center">
+          {t(
+            'auth.reloadOnReturn',
+            'Страница обновится, когда вы на неё перейдёте',
+          )}
+        </Text>
+      </Stack>
+    </Center>
+  );
+}
+
 export function Layout() {
   const authenticated = useSelector(selectIsLoggedIn);
   const [authChanged, setAuthChanged] = useState(false);
@@ -99,7 +126,7 @@ export function Layout() {
 
   // Приложение убрано целиком: ни сокетов, ни таймеров, ни запросов, пока
   // вкладку не откроют.
-  if (authChanged) return null;
+  if (authChanged) return <AuthChangedScreen />;
 
   return (
     <Suspense fallback={<FullScreenLoader />}>

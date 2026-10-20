@@ -7,6 +7,10 @@ import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import FaraRouters from '@/route/Routers';
 import Logo from '@/components/Logo';
 import UserMenu from '@/components/UserMenu';
+import {
+  AppVersionBanner,
+  useIsOutdated,
+} from '@/components/AppVersion/AppVersionBanner';
 import { ChatNotification } from '@/components/ChatNotification';
 import { useHeaderActions } from '@/shared/extensions/headerActions';
 import {
@@ -71,8 +75,10 @@ export function ModernLayout() {
   // Панель справа от модулей (LayoutAside, напр. студия): основная
   // область сужается, шапка остаётся открытой.
   const asideWidth = useLayoutAsideWidth();
-  // Страница может свернуть шапку (открытый чат на телефоне).
-  const headerHidden = useLayoutHeaderHidden();
+  // Страница может свернуть шапку (открытый чат на телефоне). Устаревший
+  // фронт — не сворачиваем: значок «!» в шапке должен быть виден.
+  const outdated = useIsOutdated();
+  const headerHidden = useLayoutHeaderHidden() && !outdated;
 
   // Определяем активную группу по текущему URL
   useEffect(() => {
@@ -233,6 +239,7 @@ export function ModernLayout() {
                   )}
                 </>
               )}
+              {outdated && <AppVersionBanner compact={!!isMobile} />}
               <UserMenu />
             </Group>
           </Flex>
