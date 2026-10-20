@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import LoadingScreen from '@components/LoadingScreen/LoadingScreen';
 import { useSelector } from 'react-redux';
@@ -6,6 +6,7 @@ import { selectIsLoggedIn } from '@/slices/authSlice';
 import { SavedFiltersPreloader } from '@/components/SearchFilter';
 import { LayoutThemeProvider, ModernLayout } from '@/components/ModernTheme';
 import { useGetPublicConfigQuery } from '@/services/config/config';
+import { onAuthChange } from '@/services/auth/authChannel';
 
 // Компонент выбора layout в зависимости от темы.
 //
@@ -58,8 +59,32 @@ function PublicHome() {
   return <SignIn />;
 }
 
+// Загружаем вкладку заново, только когда на неё смотрят: иначе после входа
+// или выхода разом грузились бы все открытые вкладки. Обработчик один на
+// модуль — повторно браузер его не добавит, слушатели не копятся.
+function reloadIfVisible() {
+  if (document.visibilityState !== 'visible') return;
+  sessionStorage.clear();
+  window.location.reload();
+}
+
 export function Layout() {
   const authenticated = useSelector(selectIsLoggedIn);
+  const [authChanged, setAuthChanged] = useState(false);
+
+  // Вошли или вышли в соседней вкладке — тут только локально, без
+  // запросов. logOut() не зовём: сброс кеша заставил бы BrandingHead
+  // перезапросить конфиг.
+  useEffect(
+    () =>
+      onAuthChange(() => {
+        setAuthChanged(true);
+        reloadIfVisible();
+        document.addEventListener('visibilitychange', reloadIfVisible);
+      }),
+    [],
+  );
+
   const AppLayout = useMemo(() => {
     if (authenticated) {
       // Возвращаем компонент с провайдером темы
@@ -71,6 +96,10 @@ export function Layout() {
     }
     return SignIn;
   }, [authenticated]);
+
+  // Приложение убрано целиком: ни сокетов, ни таймеров, ни запросов, пока
+  // вкладку не откроют.
+  if (authChanged) return null;
 
   return (
     <Suspense fallback={<FullScreenLoader />}>
