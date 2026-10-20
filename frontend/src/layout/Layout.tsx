@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Center, Stack, Text, ThemeIcon } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
@@ -9,7 +9,7 @@ import { selectIsLoggedIn } from '@/slices/authSlice';
 import { SavedFiltersPreloader } from '@/components/SearchFilter';
 import { LayoutThemeProvider, ModernLayout } from '@/components/ModernTheme';
 import { useGetPublicConfigQuery } from '@/services/config/config';
-import { onAuthChange } from '@/services/auth/authChannel';
+import { notifyAuthChange, onAuthChange } from '@/services/auth/authChannel';
 
 // Компонент выбора layout в зависимости от темы.
 //
@@ -111,6 +111,17 @@ export function Layout() {
       }),
     [],
   );
+
+  // Сессия сменилась в ЭТОЙ вкладке — вход, выход руками или по истёкшей
+  // сессии (401, закрытый сокет) — сообщаем остальным. Петли нет: вкладка,
+  // узнавшая о смене от соседей (authChanged), сама ничего не шлёт.
+  const prevToken = useRef(authenticated);
+  useEffect(() => {
+    if (prevToken.current !== authenticated && !authChanged) {
+      notifyAuthChange();
+    }
+    prevToken.current = authenticated;
+  }, [authenticated, authChanged]);
 
   const AppLayout = useMemo(() => {
     if (authenticated) {
