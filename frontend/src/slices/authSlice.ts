@@ -18,26 +18,6 @@ function loadSession(): Session | undefined {
   }
 }
 
-/**
- * Серверный logout — деактивирует сессию в БД и удаляет guard cookie.
- * Fire-and-forget: не ждём ответа, не блокируем UI.
- */
-// function serverLogout(token?: string) {
-//   if (!token) return;
-//   try {
-//     fetch(`${API_BASE_URL}/sessions/logout`, {
-//       method: 'POST',
-//       headers: {
-//         Authorization: `Bearer ${token}`,
-//         'Content-Type': 'application/json',
-//       },
-//       credentials: 'include',
-//     }).catch(() => {});
-//   } catch {
-//     // ignore
-//   }
-// }
-
 const initialState: AuthState = {
   session: loadSession(),
 };
@@ -46,23 +26,6 @@ const slice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    setSession: (
-      state,
-      { payload: { session } }: PayloadAction<{ session: Session }>,
-    ) => {
-      state.session = session;
-    },
-
-    getSession: state => {
-      const sessionPersist = JSON.parse(
-        localStorage.getItem('session') || '{}',
-      ) as Session;
-      // console.log(sessionPersist);
-      if (sessionPersist) {
-        state.session = sessionPersist;
-      }
-    },
-
     storeSession: (
       state,
       { payload: { session } }: PayloadAction<{ session: Session }>,
@@ -72,16 +35,13 @@ const slice = createSlice({
     },
 
     logOut: () => {
-      // Деактивируем сессию на сервере (fire-and-forget)
-      // serverLogout(state.session?.token);
-      // localStorage.setItem('session', '');
       localStorage.clear();
       return { session: undefined };
     },
   },
 });
 
-export const { setSession, storeSession, logOut, getSession } = slice.actions;
+export const { storeSession, logOut } = slice.actions;
 
 export default slice.reducer;
 

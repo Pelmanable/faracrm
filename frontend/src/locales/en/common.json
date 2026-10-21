@@ -106,6 +106,8 @@
     "duration": "Duration"
   },
   "auth": {
+    "changedElsewhere": "You signed in or out in another tab",
+    "reloadOnReturn": "The page will reload when you switch to it",
     "title": "Sign In",
     "subtitle": "Business management platform",
     "description": "Enter your credentials to access CRM",
