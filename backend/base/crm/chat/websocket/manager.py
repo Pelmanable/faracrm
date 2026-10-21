@@ -10,8 +10,12 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Iterable, Set
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
+from backend.base.crm.auth_token.app import AuthTokenApp
+from backend.base.system.auth.exception import AuthFailed
+
 if TYPE_CHECKING:
     from backend.base.system.bus.app import BusService
+    from backend.base.system.core.enviroment import Environment
 
 logger = logging.getLogger(__name__)
 
@@ -518,6 +522,25 @@ class ConnectionManager:
             await asyncio.gather(
                 *(self._send_to_websocket(ws, message) for ws in websockets)
             )
+
+    async def check_session(
+        self,
+        websocket: WebSocket,
+        env: "Environment",
+        token: str,
+        cookie_token: str,
+    ) -> bool:
+        """
+        Жива ли сессия сокета — та же проверка, что у HTTP-запроса (кэш или
+        БД). Отозвана или истекла — закрыть кодом 1008, как отказ на входе
+        (ws.py): фронт выйдет сам. Сбой БД — не «сессии нет», пробрасываем.
+        """
+        try:
+            await AuthTokenApp.check_session(env, token, cookie_token)
+        except AuthFailed:
+            await websocket.close(code=1008, reason="Session expired")
+            return False
+        return True
 
     async def handle_message(
         self, websocket: WebSocket, user_id: int, data: dict

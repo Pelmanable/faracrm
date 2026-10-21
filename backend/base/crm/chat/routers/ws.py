@@ -4,6 +4,7 @@
 import logging
 from typing import TYPE_CHECKING
 from backend.base.crm.auth_token.app import AuthTokenApp
+from backend.base.crm.chat.websocket.manager import WebsocketCommand
 from backend.base.system.auth.exception import AuthFailed
 
 from fastapi import Depends, APIRouter, WebSocket, WebSocketDisconnect
@@ -84,6 +85,13 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
+            # Пинг раз в 30 с — заодно проверка сессии: отозвана или истекла
+            # — менеджер закрыл сокет, выходим из цикла.
+            is_ping = data.get("type") == WebsocketCommand.ping
+            if is_ping and not await env.apps.chat.chat_manager.check_session(
+                websocket, env, token, cookie_token
+            ):
+                break
             await env.apps.chat.chat_manager.handle_message(
                 websocket, user_id, data
             )
