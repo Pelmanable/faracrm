@@ -26,7 +26,6 @@ export const baseQuery = fetchBaseQuery({
   paramsSerializer: params => queryString.stringify(params, { encode: false }),
 });
 
-let isRedirecting = false;
 // Коды ошибок авторизации - при них делаем logout
 // const AUTH_ERROR_CODES = [
 //   'TOKEN_EXPIRED',
@@ -99,9 +98,10 @@ export const baseQueryWithReauth: BaseQueryFn<
     const status = result.error.status;
     const data = result.error.data;
 
-    // 401 - ошибка аутентификации всегда logout
-    if (status === 401 && !isRedirecting) {
-      isRedirecting = true; // Блокируем повторные входы
+    // 401 - ошибка аутентификации всегда logout. Пока токен есть: параллельные
+    // 401 после первого его уже не видят, а после повторного входа в той же
+    // вкладке следующий 401 снова сработает (флаг «однажды» застревал до F5).
+    if (status === 401 && (api.getState() as RootState).auth.session?.token) {
       // api.dispatch({ type: 'authApi/cancelQueries' });
       api.dispatch({ type: `crudApi/queries/cancelAll` });
       api.dispatch(logOut());
