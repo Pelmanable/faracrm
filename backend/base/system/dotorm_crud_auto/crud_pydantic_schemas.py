@@ -81,6 +81,8 @@ class SchemaRelationMany2ManyUpdateCreate[Model](BaseModel):
     deleted: list[Id] = []
     selected: list[Id] = []
     unselected: list[Id] = []
+    # заменить все связи этим списком ([] — снять все); None — не трогать
+    set: list[Id] | None = None
 
 
 class SchemaRelationOne2ManyUpdateCreate[Model](BaseModel):

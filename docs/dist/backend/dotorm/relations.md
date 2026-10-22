@@ -76,7 +76,7 @@ await msg.update(ChatMessage(author_user_id=99))
 ```python
 await user.update(User(
     role_ids={
-        "selected": [1, 2, 3],       # установить связи (заменить)
+        "selected": [1, 2, 3],       # добавить связи
         "created": [                   # создать новые записи
             {"name": "New Role"},
         ],
@@ -91,6 +91,12 @@ await user.update(User(
 | `unselected` | Убрать связи (без удаления записей) |
 | `created` | Создать новые записи и установить связи |
 | `deleted` | Удалить записи по ID |
+| `set` | Many2many: заменить все связи списком ID (`[]` — снять все); `selected`/`created`/`unselected` применяются поверх |
+
+```python
+# Пример: оставить пользователю ровно роли 1 и 2
+await user.update(User(role_ids={"set": [1, 2]}))
+```
 
 ```python
 # Пример: добавить участника в чат

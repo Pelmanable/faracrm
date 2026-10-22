@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
 
 from backend.base.system.dotorm_crud_auto.crud_pydantic_schemas import (
+    GetListField,
     SchemaCreateOutput,
     SchemaGetOutput,
     SchemaSearchOutput,
@@ -89,6 +90,8 @@ class CRUDRouterGenerator(APIRouter):
             f"{self.Model.__route__}/fields",
             self._get_fields(),
             methods=["GET"],
+            response_model=list[GetListField],
+            response_model_exclude_unset=True,
             dependencies=[Depends(AuthTokenApp.verify_access)],
         )
 
@@ -146,6 +149,9 @@ class CRUDRouterGenerator(APIRouter):
             f"{self.Model.__route__}/bulk",
             self._update_bulk(),
             methods=["PUT"],
+            response_model_exclude=self.Model.__response_model_exclude__,
+            response_model_exclude_unset=True,
+            response_model=self._schema_update,
             dependencies=[Depends(AuthTokenApp.verify_access)],
         )
         self.add_api_route(

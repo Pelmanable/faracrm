@@ -30,6 +30,7 @@ class OrmMany2manyMixin(_Base):
     - get_many2many - fetch M2M related records
     - link_many2many - create M2M links
     - unlink_many2many - remove M2M links
+    - unlink_many2many_all - remove all M2M links of owners
     - _records_list_get_relation - batch load relations
 
     Expects DotModel to provide:
@@ -156,6 +157,24 @@ class OrmMany2manyMixin(_Base):
             f"AND {escape(field.column2)} IN ({owner_args})"
         )
         return await session.execute(stmt, [*ids, *owner_ids])
+
+    @classmethod
+    async def unlink_many2many_all(
+        cls,
+        field: Many2many,
+        owner_ids: list[int],
+        session=None,
+    ):
+        """Отвязать ВСЕ записи M2M у владельцев owner_ids одним DELETE
+        (команда set: снять все связи, потом записать новые)."""
+        session = cls._get_db_session(session)
+        escape = cls._dialect.escape_identifier
+        owner_args = cls._dialect.make_placeholders(len(owner_ids))
+        stmt = (
+            f"DELETE FROM {escape(field.many2many_table)} "
+            f"WHERE {escape(field.column2)} IN ({owner_args})"
+        )
+        return await session.execute(stmt, owner_ids)
 
     @classmethod
     async def _nested_fields_allowed(

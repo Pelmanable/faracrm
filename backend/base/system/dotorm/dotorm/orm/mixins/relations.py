@@ -610,6 +610,22 @@ class OrmRelationsMixin(_Base):
                             rec["id"] for rec in created_ids
                         ]
 
+                    # set — заменить связи списком: снять все связи
+                    # владельцев и записать новые ([] — только снять).
+                    # selected (с created) и unselected ложатся поверх.
+                    if field_obj.get("set") is not None:
+                        request_list.append(
+                            self.unlink_many2many_all(field, ids)
+                        )
+                        data_set = [
+                            (owner_id, id)
+                            for owner_id in ids
+                            for id in field_obj["set"]
+                        ]
+                        request_list.append(
+                            self.link_many2many(field, data_set)
+                        )
+
                     if field_obj.get("selected"):
                         # все пары владелец × связь — одним INSERT
                         data_selected = [

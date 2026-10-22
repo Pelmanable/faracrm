@@ -178,6 +178,14 @@ class DotModelProtocol(Protocol):
     ) -> Any: ...
 
     @classmethod
+    async def unlink_many2many_all(
+        cls,
+        field: Any,
+        owner_ids: list[int],
+        session: Any = None,
+    ) -> Any: ...
+
+    @classmethod
     async def _records_list_get_relation(
         cls,
         session: Any,

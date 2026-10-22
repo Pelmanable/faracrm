@@ -2,7 +2,7 @@
 Integration tests for relation fields (M2M, O2M, M2O).
 
 Tests cover:
-- M2M: User ↔ Role (selected/unselected)
+- M2M: User ↔ Role (selected/unselected/set)
 - O2M: Sale → SaleLine (created/deleted via parent update)
 - M2O: User → Language (change reference)
 - API level (CRUD endpoints) + ORM level
@@ -156,6 +156,57 @@ class TestM2MUserRolesORM:
         assert "replace_old" not in role_codes
         assert "replace_new" in role_codes
 
+    async def test_set_replaces_roles(self, db_pool):
+        """set replaces all links; selected applies on top."""
+
+        lang_id = await _create_language()
+        r1 = await _create_role("set_r1")
+        r2 = await _create_role("set_r2")
+        r3 = await _create_role("set_r3")
+        user_id = await _create_user("m2m_set", lang_id=lang_id)
+
+        user = await User.get(user_id)
+        await user.update(User(role_ids={"selected": [r1, r2]}))
+        await user.update(User(role_ids={"set": [r2], "selected": [r3]}))
+
+        loaded = await _get_user_with_roles(user_id)
+        assert {r.id for r in loaded.role_ids} == {r2, r3}
+
+    async def test_set_empty_clears_roles(self, db_pool):
+        """set: [] removes all links."""
+
+        lang_id = await _create_language()
+        r1 = await _create_role("set_clear_r1")
+        user_id = await _create_user("m2m_set_clear", lang_id=lang_id)
+
+        user = await User.get(user_id)
+        await user.update(User(role_ids={"selected": [r1]}))
+        await user.update(User(role_ids={"set": []}))
+
+        loaded = await _get_user_with_roles(user_id)
+        assert not loaded.role_ids
+
+    async def test_set_bulk_touches_only_owners(self, db_pool):
+        """update_bulk with set replaces links of every id, not others."""
+
+        lang_id = await _create_language()
+        r1 = await _create_role("set_bulk_r1")
+        r2 = await _create_role("set_bulk_r2")
+        u1 = await _create_user("m2m_set_bulk1", lang_id=lang_id)
+        u2 = await _create_user("m2m_set_bulk2", lang_id=lang_id)
+        other = await _create_user("m2m_set_bulk3", lang_id=lang_id)
+        for user_id in (u1, u2, other):
+            user = await User.get(user_id)
+            await user.update(User(role_ids={"selected": [r1]}))
+
+        await User.update_bulk([u1, u2], User(role_ids={"set": [r2]}))
+
+        for user_id in (u1, u2):
+            loaded = await _get_user_with_roles(user_id)
+            assert {r.id for r in loaded.role_ids} == {r2}
+        loaded = await _get_user_with_roles(other)
+        assert {r.id for r in loaded.role_ids} == {r1}
+
 
 # ====================
 # M2M: User ↔ Role (API level)
@@ -204,6 +255,27 @@ class TestM2MUserRolesAPI:
 
         loaded = await _get_user_with_roles(user_id)
         assert role_id not in [r.id for r in loaded.role_ids]
+
+    async def test_update_user_set_roles(self, authenticated_client):
+        """Replace user roles via PUT API set."""
+
+        client, auth_user_id, _ = authenticated_client
+
+        old = await _create_role("api_set_old")
+        new = await _create_role("api_set_new")
+        lang_id = await _create_language()
+        user_id = await _create_user("api_m2m_set", lang_id=lang_id)
+        user = await User.get(user_id)
+        await user.update(User(role_ids={"selected": [old]}))
+
+        response = await client.put(
+            auto(f"/users/{user_id}"),
+            json={"role_ids": {"set": [new]}},
+        )
+        assert response.status_code == 200
+
+        loaded = await _get_user_with_roles(user_id)
+        assert [r.id for r in loaded.role_ids] == [new]
 
     async def test_read_user_with_roles(self, authenticated_client):
         """Read user with nested role_ids via GET API."""
