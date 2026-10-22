@@ -1,26 +1,11 @@
-from typing import TYPE_CHECKING
-from pydantic import AwareDatetime, BaseModel
+from pydantic import BaseModel
 
 from backend.base.system.schemas.base_schema import Id
-
-if TYPE_CHECKING:
-    from backend.base.crm.users.models.users import User
-
-    SchemaUser = User.__schema__
 
 
 class UserSigninInput(BaseModel, extra="forbid"):
     login: str
     password: str
-
-
-class UserSigninOutput(BaseModel, extra="forbid"):
-    user_id: "SchemaUser"
-    token: str
-    ttl: int
-    expired_datetime: AwareDatetime
-    create_user_id: "SchemaUser"
-    update_user_id: "SchemaUser"
 
 
 class ChangePasswordInput(BaseModel, extra="forbid"):

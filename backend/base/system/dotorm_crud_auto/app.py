@@ -98,7 +98,6 @@ class DotormCrudAutoService(Service):
             # роутеры.
             if "__auto_crud__" not in model.__dict__:
                 model.__auto_crud__ = self.default_auto_crud
-            model.__schema__ = schema_registry.get_base_schema(model)
 
             if model.__auto_crud__:
                 router = CRUDRouterGenerator(

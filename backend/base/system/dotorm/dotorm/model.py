@@ -151,15 +151,9 @@ class DotModel(
     _no_transaction: Type[PostgresNoTransactionSession] = (
         PostgresNoTransactionSession
     )
-    # base validation schema for routers endpoints
-    # __schema__: ClassVar[Type]
+    # базовая pydantic-схема модели, заполняет autocrud при старте
+    # (SchemaRegistry.build_all) из полей модели
     __schema__: ClassVar[Any]
-    # variables for override auto created - update and create schemas
-    __schema_create__: ClassVar[Type]
-    __schema_read_output__: ClassVar[Type]
-    __schema_read_search_output__: ClassVar[Type]
-    __schema_read_search_input__: ClassVar[Type]
-    __schema_update__: ClassVar[Type]
     __response_model_exclude__: ClassVar[set[str] | None] = None
     # Составные индексы таблицы. Список кортежей имён колонок.
     # Пример: __indexes__ = [("res_model", "res_id"), ("user_id", "chat_id", "is_active")]
@@ -167,8 +161,6 @@ class DotModel(
     # Имя индекса генерируется автоматически: idx_<table>_<col1>_<col2>_...
     # Создаётся через CREATE INDEX IF NOT EXISTS, так что безопасно при повторном запуске.
     __indexes__: ClassVar[list[tuple[str, ...]]] = []
-    # its auto
-    # __schema_output_search__: ClassVar[Type]
 
     # id required field in any model
     id: ClassVar[int]
