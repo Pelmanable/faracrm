@@ -1,6 +1,6 @@
 """Exceptions related to auth"""
 
-from backend.base.system.auth.exception import AuthFailed
+from backend.base.crm.auth.exception import AuthFailed
 
 
 class TokenNotFound(AuthFailed):

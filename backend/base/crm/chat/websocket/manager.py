@@ -11,7 +11,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
 from backend.base.crm.auth_token.app import AuthTokenApp
-from backend.base.system.auth.exception import AuthFailed
+from backend.base.crm.auth.exception import AuthFailed
 
 if TYPE_CHECKING:
     from backend.base.system.bus.app import BusService

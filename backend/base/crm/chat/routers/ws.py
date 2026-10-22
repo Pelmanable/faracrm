@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 from backend.base.crm.auth_token.app import AuthTokenApp
 from backend.base.crm.chat.websocket.manager import WebsocketCommand
-from backend.base.system.auth.exception import AuthFailed
+from backend.base.crm.auth.exception import AuthFailed
 
 from fastapi import Depends, APIRouter, WebSocket, WebSocketDisconnect
 

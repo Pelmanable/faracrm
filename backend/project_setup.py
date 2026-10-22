@@ -274,7 +274,7 @@ from backend.base.crm.marketplace.models.user_ext import (  # noqa: F401
 from backend.base.system.cron.app import CronApp
 from backend.base.crm.languages.app import LanguageApp
 from backend.base.crm.auth_token.app import AuthTokenApp
-from backend.base.system.administration.app import AdministrationApp
+from backend.base.crm.administration.app import AdministrationApp
 from backend.base.crm.apps.app import AppsApp
 from backend.base.crm.saved_filters.app import SavedFiltersApp
 from backend.base.crm.view_settings.app import ViewSettingsApp

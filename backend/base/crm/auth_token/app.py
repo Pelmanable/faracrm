@@ -2,8 +2,8 @@ from fastapi import FastAPI, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend.base.system.auth.exception import AuthFailed
-from backend.base.system.auth.strategy_abstract import AuthStrategyAbstract
+from backend.base.crm.auth.exception import AuthFailed
+from backend.base.crm.auth.strategy_abstract import AuthStrategyAbstract
 from backend.base.system.core.app import App
 from backend.base.system.core.enviroment import Environment
 from backend.base.system.dotorm.dotorm.access import (
