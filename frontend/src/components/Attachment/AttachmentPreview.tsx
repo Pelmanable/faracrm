@@ -20,22 +20,12 @@ import {
   IconPhotoOff,
 } from '@tabler/icons-react';
 import { FileIcon } from './FileIcon';
-import { ImagePreviewModal } from './ImagePreviewModal';
-import { DocxEditorModal } from './DocxEditorModal';
-import { VideoPreviewModal } from './VideoPreviewModal';
+import { AttachmentEditorModal } from './AttachmentEditorModal';
 import { AudioPlayer } from './AudioPlayer';
-import {
-  isImageMimetype,
-  isAudioMimetype,
-  isVideoMimetype,
-  isDocxMimetype,
-  isBrowserViewableMimetype,
-  formatFileSize,
-} from './fileIcons';
-import {
-  attachmentPreviewUrl,
-  openAttachmentInBrowser,
-} from '@/utils/attachmentUrls';
+import { canViewAttachment, useAttachmentViewer } from './useAttachmentViewer';
+import { canEditAttachment } from './viewKind';
+import { isImageMimetype, isAudioMimetype, formatFileSize } from './fileIcons';
+import { attachmentPreviewUrl } from '@/utils/attachmentUrls';
 import classes from './AttachmentPreview.module.css';
 
 export interface AttachmentData {
@@ -88,13 +78,9 @@ export function AttachmentPreview({
   const [thumbnailError, setThumbnailError] = useState(false);
   const [isLoadingThumbnail] = useState(false);
 
-  // Оригинал (для модального окна)
-  const [originalSrc, setOriginalSrc] = useState<string | null>(null);
-  const [isLoadingOriginal] = useState(false);
-
-  const [imageModalOpened, setImageModalOpened] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
-  const [videoOpened, setVideoOpened] = useState(false);
+  const attachmentViewer = useAttachmentViewer();
+  const openViewer = attachmentViewer.open;
 
   // Трекаем id чтобы не сбрасывать при ререндерах с тем же id
   const loadedForIdRef = useRef<number | string | null>(null);
@@ -106,14 +92,9 @@ export function AttachmentPreview({
     typeof attachment.id === 'number' && attachment.id > 0
       ? attachment.id
       : null;
-  // Правка docx во встроенном редакторе — только у сохранённого вложения
-  const canEditDocx =
-    !!savedId && isDocxMimetype(attachment.mimetype, attachment.name);
-  // Просмотр без скачивания у сохранённого: видео — плеер в окне, PDF и
-  // текст — встроенный просмотрщик браузера в новой вкладке
-  const canPlayVideo = !!savedId && isVideoMimetype(attachment.mimetype);
-  const canOpenInBrowser =
-    !!savedId && isBrowserViewableMimetype(attachment.mimetype);
+  // Правка docx и xlsx во встроенном редакторе — только у сохранённого
+  const canEdit =
+    !!savedId && canEditAttachment(attachment.mimetype, attachment.name);
 
   const canFetchFromApi =
     isImage &&
@@ -129,7 +110,6 @@ export function AttachmentPreview({
     if (loadedForIdRef.current !== attachId) {
       loadedForIdRef.current = null;
       setThumbnailSrc(null);
-      setOriginalSrc(null);
     }
     if (errorForIdRef.current !== attachId) {
       errorForIdRef.current = null;
@@ -142,7 +122,6 @@ export function AttachmentPreview({
     if (attachment.content) {
       const src = `data:${attachment.mimetype};base64,${attachment.content}`;
       setThumbnailSrc(src);
-      setOriginalSrc(src); // для нового файла оригинал = то же самое
       loadedForIdRef.current = attachId ?? null;
       return;
     }
@@ -190,77 +169,46 @@ export function AttachmentPreview({
     errorForIdRef.current = attachment.id ?? null;
   }, [attachment.id]);
 
-  // --- Клик: загружаем оригинал и открываем модалку ---
+  // Просмотр без скачивания (клик по превью): сохранённый файл или ещё не
+  // сохранённая картинка (из base64). Битую картинку не открываем.
+  const canView =
+    !thumbnailError &&
+    canViewAttachment(attachment) &&
+    (!!savedId || (isImage && !!attachment.content));
+
+  // --- Клик: окно просмотра, иначе скачивание ---
   const handleClick = useCallback(() => {
-    // onClick от родителя (галерея) — приоритет
+    // onClick от родителя (просмотр со стрелками по соседним файлам) — приоритет
     if (onClick) {
       onClick();
       return;
     }
 
-    if (canPlayVideo) {
-      setVideoOpened(true);
+    if (canView) {
+      openViewer({
+        id: savedId ?? undefined,
+        name: attachment.name,
+        mimetype: attachment.mimetype,
+        checksum: attachment.checksum,
+        content: attachment.content,
+      });
       return;
     }
 
-    if (canOpenInBrowser) {
-      openAttachmentInBrowser(savedId!, attachment.checksum);
-      return;
-    }
-
-    if (!isImage) {
-      onDownload?.();
-      return;
-    }
-
-    // Уже была ошибка — не пытаемся снова
-    if (thumbnailError) return;
-
-    // Оригинал уже загружен
-    if (originalSrc) {
-      setImageModalOpened(true);
-      return;
-    }
-
-    // Есть thumbnail (из base64/content) — он и есть оригинал
-    if (thumbnailSrc && attachment.content) {
-      setOriginalSrc(thumbnailSrc);
-      setImageModalOpened(true);
-      return;
-    }
-
-    // Нужно загрузить оригинал с сервера
-    if (canFetchFromApi && typeof attachment.id === 'number') {
-      // Прямой URL без размеров → оригинал
-      const src = getPreviewUrl(attachment);
-      setOriginalSrc(src);
-      if (!thumbnailSrc) {
-        setThumbnailSrc(src);
-        loadedForIdRef.current = attachment.id ?? null;
-      }
-      setImageModalOpened(true);
-    }
+    onDownload?.();
   }, [
     onClick,
-    canPlayVideo,
-    canOpenInBrowser,
+    canView,
+    openViewer,
     savedId,
+    attachment.name,
+    attachment.mimetype,
     attachment.checksum,
-    isImage,
-    thumbnailError,
-    originalSrc,
-    thumbnailSrc,
-    attachment.id,
     attachment.content,
-    canFetchFromApi,
     onDownload,
   ]);
 
-  const isLoadingAny = isLoadingThumbnail || isLoadingOriginal;
-
-  // «Просмотр» — то же, что клик по превью
-  const canView =
-    (isImage && !thumbnailError) || canPlayVideo || canOpenInBrowser;
+  const isLoadingAny = isLoadingThumbnail;
 
   // --- Compact mode ---
   if (compact) {
@@ -402,7 +350,8 @@ export function AttachmentPreview({
 
             {showActions && (
               <Group gap="xs" mt={4}>
-                {canView && (
+                {/* Docx и xlsx открывает «Редактировать» рядом */}
+                {canView && !canEdit && (
                   <Tooltip label="Просмотр">
                     <ActionIcon
                       variant="subtle"
@@ -430,7 +379,7 @@ export function AttachmentPreview({
                     </ActionIcon>
                   </Tooltip>
                 )}
-                {canEditDocx && (
+                {canEdit && (
                   <Tooltip label="Редактировать">
                     <ActionIcon
                       variant="subtle"
@@ -478,37 +427,19 @@ export function AttachmentPreview({
         </Paper>
       )}
 
-      {/* Встроенный редактор docx */}
-      {canEditDocx && (
-        <DocxEditorModal
+      {/* Встроенный редактор docx/xlsx */}
+      {canEdit && (
+        <AttachmentEditorModal
           attachmentId={attachment.id as number}
           filename={attachment.name}
+          mimetype={attachment.mimetype}
           opened={editorOpened}
           onClose={() => setEditorOpened(false)}
         />
       )}
 
-      {/* Плеер видео */}
-      {canPlayVideo && (
-        <VideoPreviewModal
-          opened={videoOpened}
-          onClose={() => setVideoOpened(false)}
-          attachmentId={savedId!}
-          checksum={attachment.checksum}
-          filename={attachment.name}
-        />
-      )}
-
-      {/* Модальное окно — оригинал */}
-      {isImage && (
-        <ImagePreviewModal
-          opened={imageModalOpened && !!originalSrc}
-          onClose={() => setImageModalOpened(false)}
-          src={originalSrc || ''}
-          filename={attachment.name || undefined}
-          onDownload={onDownload}
-        />
-      )}
+      {/* Окно просмотра */}
+      {attachmentViewer.modal}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { Badge, ActionIcon, Group, Tooltip } from '@mantine/core';
+import { Badge, ActionIcon, Box, Group, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -10,11 +10,17 @@ import {
   IconEdit,
   IconDownload,
   IconCopy,
+  IconEye,
 } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { Field } from '@/components/List/Field';
 import { List } from '@/components/List/List';
 import { RelationCell } from '@/components/ListCells';
+import {
+  canViewAttachment,
+  useAttachmentViewer,
+} from '@/components/Attachment';
+import type { ViewableAttachment } from '@/components/Attachment';
 import { Attachment } from '@/services/api/attachments';
 import { SchemaAttachmentStorage } from '@/services/api/attachments';
 import {
@@ -34,6 +40,38 @@ interface AttachmentRoute {
   flat: boolean;
   active: boolean;
   storage_id: number;
+}
+
+/** «Просмотр» в колонке действий — без перехода в запись. */
+function AttachmentViewButton({
+  attachment,
+}: {
+  attachment: ViewableAttachment;
+}) {
+  const { t } = useTranslation('attachments');
+  const attachmentViewer = useAttachmentViewer();
+
+  return (
+    <>
+      <Tooltip label={t('view', 'Просмотр')}>
+        <ActionIcon
+          size="sm"
+          variant="light"
+          color="blue"
+          onClick={e => {
+            e.stopPropagation();
+            attachmentViewer.open(attachment);
+          }}>
+          <IconEye size={14} />
+        </ActionIcon>
+      </Tooltip>
+      {/* Окно — порталом, но клики в нём всплывают по дереву React до
+          строки списка и открывали бы запись */}
+      <Box component="span" onClick={e => e.stopPropagation()}>
+        {attachmentViewer.modal}
+      </Box>
+    </>
+  );
 }
 
 export function ViewListAttachments() {
@@ -84,7 +122,7 @@ export function ViewListAttachments() {
       <Field
         name="storage_file_url"
         label={t('fields.actions', 'Действия')}
-        fields={['storage_file_id']}
+        fields={['storage_file_id', 'checksum']}
         render={(_value, record) => {
           const storageType = record.storage_id?.type;
           const isCloud = !!storageType && storageType !== 'file';
@@ -153,6 +191,21 @@ export function ViewListAttachments() {
                       <IconEdit size={14} />
                     </ActionIcon>
                   </Tooltip>
+                )}
+
+              {record.id &&
+                canViewAttachment({
+                  mimetype: record.mimetype,
+                  name: record.name,
+                }) && (
+                  <AttachmentViewButton
+                    attachment={{
+                      id: Number(record.id),
+                      name: record.name,
+                      mimetype: record.mimetype,
+                      checksum: record.checksum,
+                    }}
+                  />
                 )}
 
               {/* Скачать — и для локальных, и для облачных */}

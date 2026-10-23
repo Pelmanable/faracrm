@@ -108,6 +108,22 @@ export function openAttachmentInBrowser(
   );
 }
 
+/**
+ * Открыть документ Word/OpenDocument/RTF как PDF в новой вкладке —
+ * сервер конвертирует его через LibreOffice. Вызывать из обработчика клика.
+ */
+export function openAttachmentAsPdf(
+  id: number | string,
+  checksum?: string | null,
+): void {
+  const query = checksum ? `?v=${checksum}` : '';
+  window.open(
+    `${API_BASE_URL}/attachments/${id}/content/pdf${query}`,
+    '_blank',
+    'noopener',
+  );
+}
+
 /** Скачать ещё не загруженный файл прямо из base64-контента. */
 export function downloadBase64(
   content: string,

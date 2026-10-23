@@ -100,7 +100,11 @@ export const DocxEditorFrame = forwardRef<
         navigation={chrome}
         rulers={chrome}
         onSave={onSave}
-        onChange={onChange}
+        // source есть у замен документа (load/refresh/recovery), у правок — нет:
+        // открытие файла не должно считаться несохранённым изменением
+        onChange={change => {
+          if (!change.source) onChange?.();
+        }}
         renderTitleBarRight={titleBarRight ? () => titleBarRight : undefined}
       />
     </div>

@@ -1,22 +1,13 @@
 /**
  * Полноэкранный редактор docx-вложения.
  *
- * Открывает файл через cookie-роут /attachments/{id}/content, правит во
- * встроенном редакторе (DocxEditorFrame, ленивый чанк) и сохраняет обратно
- * обычным PUT /auto/attachments/{id} с base64-контентом — тот же путь, что
- * у замены файла в форме вложения (Attachment.update пишет байты в хранилище).
+ * Правит во встроенном редакторе (DocxEditorFrame, ленивый чанк); загрузка
+ * и сохранение обратно во вложение — useAttachmentFileEditor.
  *
  * Использование:
  *   <DocxEditorModal attachmentId={id} filename={name} opened onClose={...} />
  */
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { lazy, Suspense, useCallback, useRef } from 'react';
 import {
   Button,
   Center,
@@ -26,11 +17,8 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
-import { useUpdateMutation } from '@/services/api/crudApi';
-import { attachmentContentUrl } from '@/utils/attachmentUrls';
-import { arrayBufferToBase64 } from '@/utils/base64';
+import { useAttachmentFileEditor } from './useAttachmentFileEditor';
 import type { DocxEditorFrameHandle } from './DocxEditorFrame';
 
 const DocxEditorFrame = lazy(() =>
@@ -55,67 +43,13 @@ export function DocxEditorModal({
 }: DocxEditorModalProps) {
   const { t } = useTranslation('common');
   const frameRef = useRef<DocxEditorFrameHandle>(null);
-  const [bytes, setBytes] = useState<Uint8Array | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [update] = useUpdateMutation();
+  const { bytes, loadError, dirty, markDirty, saving, save, handleClose } =
+    useAttachmentFileEditor({ attachmentId, opened, onClose, onSaved });
 
-  // Загрузка файла при открытии; при закрытии — сброс, чтобы следующее
-  // открытие показало актуальные байты, а не старую копию.
-  useEffect(() => {
-    if (!opened) {
-      setBytes(null);
-      setLoadError(null);
-      setDirty(false);
-      return;
-    }
-    let cancelled = false;
-    fetch(attachmentContentUrl(attachmentId), { credentials: 'include' })
-      .then(response => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .then(buffer => {
-        if (!cancelled) setBytes(new Uint8Array(buffer));
-      })
-      .catch(error => {
-        if (!cancelled) setLoadError(String(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [opened, attachmentId]);
-
-  const handleSave = useCallback(async () => {
-    const buffer = await frameRef.current?.save();
-    if (!buffer) return;
-    setSaving(true);
-    try {
-      const content = await arrayBufferToBase64(buffer);
-      await update({
-        model: 'attachments',
-        id: attachmentId,
-        values: { content, size: buffer.byteLength },
-      }).unwrap();
-      setDirty(false);
-      notifications.show({ message: t('docxEditor.saved'), color: 'green' });
-      onSaved?.(buffer.byteLength);
-    } catch (error) {
-      notifications.show({
-        title: t('docxEditor.saveFailed'),
-        message: String(error),
-        color: 'red',
-      });
-    } finally {
-      setSaving(false);
-    }
-  }, [attachmentId, onSaved, t, update]);
-
-  const handleClose = useCallback(() => {
-    if (dirty && !window.confirm(t('docxEditor.unsavedClose'))) return;
-    onClose();
-  }, [dirty, onClose, t]);
+  const handleSave = useCallback(
+    () => save(() => frameRef.current?.save()),
+    [save],
+  );
 
   const actions = (
     <Group gap="xs" wrap="nowrap">
@@ -169,7 +103,7 @@ export function DocxEditorModal({
             document={bytes}
             title={filename || undefined}
             onSave={handleSave}
-            onChange={() => setDirty(true)}
+            onChange={markDirty}
             titleBarRight={actions}
           />
         </Suspense>

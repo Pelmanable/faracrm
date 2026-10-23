@@ -188,20 +188,20 @@ export function isDocxMimetype(
   return !!name && name.toLowerCase().endsWith('.docx');
 }
 
-/**
- * Файлы, которые браузер показывает сам, — их «Просмотр» открывает в новой
- * вкладке. HTML, SVG и XML сюда не входят: открытые с домена приложения,
- * они выполнили бы скрипты из файла.
- */
-const BROWSER_VIEWABLE_MIMETYPES = new Set([
-  'application/pdf',
-  'text/plain',
-  'text/csv',
-  'application/json',
-]);
+const XLSX_MIMETYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-export function isBrowserViewableMimetype(mimetype?: string | null): boolean {
-  return !!mimetype && BROWSER_VIEWABLE_MIMETYPES.has(mimetype);
+/**
+ * Проверить, является ли файл таблицей Excel (.xlsx) — такие правятся во
+ * встроенном редакторе (SpreadsheetEditorModal). Имя — запасной признак,
+ * как у docx.
+ */
+export function isXlsxMimetype(
+  mimetype?: string | null,
+  name?: string | null,
+): boolean {
+  if (mimetype === XLSX_MIMETYPE) return true;
+  return !!name && name.toLowerCase().endsWith('.xlsx');
 }
 
 /**

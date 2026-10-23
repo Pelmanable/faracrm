@@ -26,12 +26,11 @@ import {
 } from '@/services/api/chat';
 import {
   AttachmentPreview,
-  ImageGalleryModal,
   VoiceRecorder,
   isImageMimetype,
   formatFileSize,
+  useAttachmentViewer,
 } from '@/components/Attachment';
-import type { GalleryItem } from '@/components/Attachment';
 import { EmojiPicker } from './EmojiPicker';
 import { ConnectorSwitcher, ConnectorOption } from './ConnectorSwitcher';
 import { EmailRichInput } from './EmailRichInput';
@@ -100,8 +99,7 @@ export function ChatInput({
   const [composerKey, setComposerKey] = useState(0);
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [emojiOpened, setEmojiOpened] = useState(false);
-  const [galleryOpened, setGalleryOpened] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+  const attachmentViewer = useAttachmentViewer();
   const [, setIsRecording] = useState(false);
 
   const [sendMessage] = useSendMessageMutation();
@@ -336,25 +334,19 @@ export function ChatInput({
     }
   };
 
-  const handleOpenGallery = (index: number) => {
-    const imageFiles = attachments.filter(a => isImageMimetype(a.mimetype));
-    const file = attachments[index];
-    const imageIndex = imageFiles.findIndex(f => f._localId === file._localId);
-
-    if (imageIndex >= 0) {
-      setGalleryIndex(imageIndex);
-      setGalleryOpened(true);
-    }
-  };
-
-  const galleryItems: GalleryItem[] = attachments
-    .filter(a => isImageMimetype(a.mimetype))
-    .map(a => ({
-      id: undefined,
+  // Ещё не отправленные картинки — из base64, со стрелками по соседним
+  // картинкам (остальные файлы без id окну показать нечем)
+  const handleViewAttachment = (index: number) => {
+    const items = attachments.map(a => ({
       name: a.name,
       mimetype: a.mimetype,
       content: a.content,
     }));
+    attachmentViewer.open(
+      items[index],
+      items.filter(item => isImageMimetype(item.mimetype)),
+    );
+  };
 
   const canAddMore = attachments.length < MAX_FILES;
 
@@ -448,7 +440,7 @@ export function ChatInput({
                 onDelete={() => handleRemoveAttachment(file._localId)}
                 onClick={
                   isImageMimetype(file.mimetype)
-                    ? () => handleOpenGallery(index)
+                    ? () => handleViewAttachment(index)
                     : undefined
                 }
                 showPreview={true}
@@ -565,12 +557,7 @@ export function ChatInput({
         </Group>
       )}
 
-      <ImageGalleryModal
-        opened={galleryOpened}
-        onClose={() => setGalleryOpened(false)}
-        items={galleryItems}
-        initialIndex={galleryIndex}
-      />
+      {attachmentViewer.modal}
     </Box>
   );
 }

@@ -18,11 +18,10 @@ import { useParams } from 'react-router-dom';
 import { FormFieldsContext, useFormContext } from '../FormContext';
 import {
   AttachmentPreview,
-  ImageGalleryModal,
   isImageMimetype,
   formatFileSize,
+  useAttachmentViewer,
 } from '@/components/Attachment';
-import type { GalleryItem } from '@/components/Attachment';
 import classes from './FieldPolymorphicOne2many.module.css';
 import { downloadAttachment, downloadBase64 } from '@/utils/attachmentUrls';
 import { useTranslation } from 'react-i18next';
@@ -74,9 +73,7 @@ export const FieldPolymorphicOne2many = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Галерея
-  const [galleryOpened, setGalleryOpened] = useState(false);
-  const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
+  const attachmentViewer = useAttachmentViewer();
 
   // Получить все файлы (существующие + новые)
   const getExistingFiles = (): AttachmentFile[] => {
@@ -255,32 +252,20 @@ export const FieldPolymorphicOne2many = ({
     }
   };
 
-  // Открытие галереи
-  const handleOpenGallery = (index: number) => {
-    // Находим индекс среди изображений
-    const imageFiles = allFiles.filter(f => isImageMimetype(f.mimetype));
-    const file = allFiles[index];
-    const imageIndex = imageFiles.findIndex(
-      f =>
-        (f.id && f.id === file.id) ||
-        (f._localId && f._localId === file._localId),
-    );
-
-    if (imageIndex >= 0) {
-      setGalleryInitialIndex(imageIndex);
-      setGalleryOpened(true);
-    }
-  };
-
-  // Подготовка элементов галереи
-  const galleryItems: GalleryItem[] = allFiles
-    .filter(f => isImageMimetype(f.mimetype))
-    .map(f => ({
+  // Картинки — со стрелками по картинкам поля (новые — из base64);
+  // остальные файлы AttachmentPreview открывает сам
+  const handleViewImage = (index: number) => {
+    const items = allFiles.map(f => ({
       id: f.id,
       name: f.name,
       mimetype: f.mimetype,
       content: f.content,
     }));
+    attachmentViewer.open(
+      items[index],
+      items.filter(item => isImageMimetype(item.mimetype)),
+    );
+  };
 
   const canAddMore = allFiles.length < maxFiles;
 
@@ -319,7 +304,7 @@ export const FieldPolymorphicOne2many = ({
               onDownload={() => handleDownload(file)}
               onClick={
                 isImageMimetype(file.mimetype)
-                  ? () => handleOpenGallery(index)
+                  ? () => handleViewImage(index)
                   : undefined
               }
               showPreview={(file as any).show_preview !== false && showPreview}
@@ -379,21 +364,8 @@ export const FieldPolymorphicOne2many = ({
         </Text>
       )}
 
-      {/* Галерея */}
-      <ImageGalleryModal
-        opened={galleryOpened}
-        onClose={() => setGalleryOpened(false)}
-        items={galleryItems}
-        initialIndex={galleryInitialIndex}
-        onDownload={item => {
-          const file = allFiles.find(
-            f =>
-              (f.id && f.id === item.id) ||
-              (f.content && f.content === item.content),
-          );
-          if (file) handleDownload(file);
-        }}
-      />
+      {/* Окно просмотра */}
+      {attachmentViewer.modal}
     </Stack>
   );
 };

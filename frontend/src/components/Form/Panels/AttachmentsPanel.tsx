@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState } from 'react';
 import { Stack, Text, Button, Loader } from '@mantine/core';
 import { IconUpload } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
@@ -9,10 +9,10 @@ import {
 } from '@/services/api/crudApi';
 import {
   AttachmentPreview,
-  ImageGalleryModal,
-  isImageMimetype,
+  canViewAttachment,
+  useAttachmentViewer,
 } from '@/components/Attachment';
-import type { GalleryItem } from '@/components/Attachment';
+import type { ViewableAttachment } from '@/components/Attachment';
 import { downloadAttachment } from '@/utils/attachmentUrls';
 
 const PAGE_SIZE = 80;
@@ -27,8 +27,7 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+  const attachmentViewer = useAttachmentViewer();
 
   const { data: attachmentsData, isLoading } = useSearchQuery({
     model: 'attachments',
@@ -37,6 +36,7 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
       'name',
       'size',
       'mimetype',
+      'checksum',
       'storage_file_url',
       'storage_file_id',
       'is_voice',
@@ -59,29 +59,13 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
   const total = attachmentsData?.total || 0;
   const hasMore = total > attachments.length;
 
-  // Image gallery items
-  const imageAttachments = attachments.filter((att: any) =>
-    isImageMimetype(att.mimetype),
-  );
-  const galleryItems: GalleryItem[] = imageAttachments.map((att: any) => ({
+  // Файлы записи — для стрелок окна просмотра
+  const viewItems: ViewableAttachment[] = attachments.map((att: any) => ({
     id: att.id,
-    name: att.name || undefined,
-    mimetype: att.mimetype || undefined,
-    checksum: att.checksum || undefined,
+    name: att.name,
+    mimetype: att.mimetype,
+    checksum: att.checksum,
   }));
-
-  const handleOpenGallery = useCallback(
-    (attachmentId: number) => {
-      const index = imageAttachments.findIndex(
-        (att: any) => att.id === attachmentId,
-      );
-      if (index !== -1) {
-        setGalleryIndex(index);
-        setGalleryOpen(true);
-      }
-    },
-    [imageAttachments],
-  );
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -168,7 +152,7 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
         </Text>
       )}
 
-      {attachments.map((att: any) => (
+      {attachments.map((att: any, index: number) => (
         <AttachmentPreview
           key={att.id}
           attachment={{
@@ -182,8 +166,8 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
           onDelete={() => handleDelete(att.id)}
           onDownload={() => handleDownload(att.id)}
           onClick={
-            isImageMimetype(att.mimetype)
-              ? () => handleOpenGallery(att.id)
+            canViewAttachment(att)
+              ? () => attachmentViewer.open(viewItems[index], viewItems)
               : undefined
           }
           showPreview={att.show_preview !== false}
@@ -202,14 +186,8 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
         </Button>
       )}
 
-      {/* Image gallery modal */}
-      <ImageGalleryModal
-        opened={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-        items={galleryItems}
-        initialIndex={galleryIndex}
-        onDownload={item => item.id && handleDownload(item.id)}
-      />
+      {/* Окно просмотра со стрелками по файлам записи */}
+      {attachmentViewer.modal}
     </Stack>
   );
 }

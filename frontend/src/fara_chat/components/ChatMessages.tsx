@@ -25,6 +25,7 @@ import {
   IconEyeOff,
   IconArrowForward,
   IconDownload,
+  IconEye,
   IconMoodSmile,
   IconCheck,
   IconChecks,
@@ -43,13 +44,13 @@ import {
   chatApi,
   ChatMessage,
   Chat,
+  MessageAttachment,
 } from '@/services/api/chat';
 import {
   AttachmentPreview,
-  ImageGalleryModal,
-  isImageMimetype,
+  canViewAttachment,
+  useAttachmentViewer,
 } from '@/components/Attachment';
-import type { GalleryItem } from '@/components/Attachment';
 import { downloadAttachment } from '@/utils/attachmentUrls';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch } from '@/store/store';
@@ -137,14 +138,14 @@ export function ChatMessages({
   const viewportRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [galleryOpened, setGalleryOpened] = useState(false);
-  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
-  const [galleryIndex, setGalleryIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     message: ChatMessage;
+    /** Вложение под курсором — для «Просмотр» */
+    attachment?: MessageAttachment;
   } | null>(null);
+  const attachmentViewer = useAttachmentViewer();
   const [editModal, setEditModal] = useState<{
     opened: boolean;
     message: ChatMessage | null;
@@ -281,25 +282,6 @@ export function ChatMessages({
   const canDeleteMessage = (message: ChatMessage) =>
     isOwnMessage(message) || isCurrentUserChatAdmin;
 
-  // По id вложения, а не по позиции в общем списке: галерея — только
-  // картинки, а список вложений смешанный (у письма это норма).
-  const handleOpenGallery = (message: ChatMessage, attachmentId: number) => {
-    const imageAttachments =
-      message.attachments?.filter(a => isImageMimetype(a.mimetype)) || [];
-    const index = imageAttachments.findIndex(a => a.id === attachmentId);
-    if (index === -1) return;
-    setGalleryItems(
-      imageAttachments.map(a => ({
-        id: a.id,
-        name: a.name,
-        mimetype: a.mimetype,
-        checksum: a.checksum,
-      })),
-    );
-    setGalleryIndex(index);
-    setGalleryOpened(true);
-  };
-
   // Скачивание вынесено в общий хелпер downloadAttachment
   // (utils/attachmentUrls): на iOS Safari window.open для ответа с
   // Content-Disposition: attachment часто блокируется, поэтому везде
@@ -308,7 +290,11 @@ export function ChatMessages({
     downloadAttachment(attachmentId, name);
   };
 
-  const handleContextMenu = (e: React.MouseEvent, message: ChatMessage) => {
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    message: ChatMessage,
+    attachment?: MessageAttachment,
+  ) => {
     e.preventDefault();
     // call_external — виртуальное сообщение (звонок из таблицы call, id<0):
     // редактировать/удалять/реагировать нечего, контекстное меню не открываем.
@@ -323,13 +309,24 @@ export function ChatMessages({
       y = window.innerHeight - menuHeight - 10;
     if (x < 10) x = 10;
     if (y < 10) y = 10;
-    setContextMenu({ x, y, message });
+    setContextMenu({ x, y, message, attachment });
   };
 
   const handleCopyText = () => {
     if (contextMenu?.message.body) {
       navigator.clipboard.writeText(contextMenu.message.body);
       notifications.show({ message: t('textCopied'), color: 'green' });
+    }
+    setContextMenu(null);
+  };
+
+  // Как клик по вложению: окно просмотра со стрелками по файлам сообщения
+  const handleViewFile = () => {
+    if (contextMenu?.attachment) {
+      attachmentViewer.open(
+        contextMenu.attachment,
+        contextMenu.message.attachments,
+      );
     }
     setContextMenu(null);
   };
@@ -589,29 +586,41 @@ export function ChatMessages({
                           cols={message.attachments.length === 1 ? 1 : 2}
                           spacing={4}>
                           {message.attachments.map(att => (
-                            <AttachmentPreview
+                            // Меню — с вложением под курсором
+                            <Box
                               key={att.id}
-                              attachment={{
-                                id: att.id,
-                                name: att.name,
-                                mimetype: att.mimetype,
-                                size: att.size,
-                                is_voice: att.is_voice,
-                              }}
-                              onClick={
-                                isImageMimetype(att.mimetype)
-                                  ? () => handleOpenGallery(message, att.id)
-                                  : undefined
-                              }
-                              onDownload={() =>
-                                handleDownloadAttachment(att.id, att.name)
-                              }
-                              showPreview={att.show_preview !== false}
-                              previewSize={
-                                message.attachments!.length === 1 ? 250 : 120
-                              }
-                              showActions={false}
-                            />
+                              onContextMenu={e => {
+                                e.stopPropagation();
+                                handleContextMenu(e, message, att);
+                              }}>
+                              <AttachmentPreview
+                                attachment={{
+                                  id: att.id,
+                                  name: att.name,
+                                  mimetype: att.mimetype,
+                                  size: att.size,
+                                  checksum: att.checksum,
+                                  is_voice: att.is_voice,
+                                }}
+                                onClick={
+                                  canViewAttachment(att)
+                                    ? () =>
+                                        attachmentViewer.open(
+                                          att,
+                                          message.attachments,
+                                        )
+                                    : undefined
+                                }
+                                onDownload={() =>
+                                  handleDownloadAttachment(att.id, att.name)
+                                }
+                                showPreview={att.show_preview !== false}
+                                previewSize={
+                                  message.attachments!.length === 1 ? 250 : 120
+                                }
+                                showActions={false}
+                              />
+                            </Box>
                           ))}
                         </SimpleGrid>
                       </Box>
@@ -895,6 +904,15 @@ export function ChatMessages({
                 <Text size="sm">{t('copyText')}</Text>
               </Box>
             )}
+            {contextMenu.attachment &&
+              canViewAttachment(contextMenu.attachment) && (
+                <Box
+                  className={styles.contextMenuItem}
+                  onClick={handleViewFile}>
+                  <IconEye size={16} />
+                  <Text size="sm">{t('viewFile')}</Text>
+                </Box>
+              )}
             {hasAttachments(contextMenu.message) && (
               <Box
                 className={styles.contextMenuItem}
@@ -978,15 +996,7 @@ export function ChatMessages({
         </ActionIcon>
       )}
 
-      <ImageGalleryModal
-        opened={galleryOpened}
-        onClose={() => setGalleryOpened(false)}
-        items={galleryItems}
-        initialIndex={galleryIndex}
-        onDownload={item =>
-          item.id && handleDownloadAttachment(item.id, item.name)
-        }
-      />
+      {attachmentViewer.modal}
 
       <Modal
         opened={editModal.opened}

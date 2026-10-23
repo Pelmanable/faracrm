@@ -1,0 +1,85 @@
+/* Тёмное полноэкранное окно: тулбар сверху, файл по центру */
+.content {
+  background-color: rgba(0, 0, 0, 0.95);
+}
+
+.body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.8) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px var(--mantine-spacing-md) var(--mantine-spacing-md);
+}
+
+.navButton {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1001;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.navButton:hover {
+  opacity: 1;
+}
+
+/* Документ (таблица, текст, письмо) — светлым листом */
+.sheet {
+  align-self: stretch;
+  width: 100%;
+  max-width: 1200px;
+  overflow: auto;
+  padding: var(--mantine-spacing-md);
+  border-radius: var(--mantine-radius-md);
+  background-color: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+}
+
+.pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.imageWrapper {
+  transition: transform 0.2s ease;
+}
+
+.image {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+.video {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.audio {
+  width: min(600px, 100%);
+}

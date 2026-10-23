@@ -40,18 +40,17 @@ import {
 } from '@/services/api/attachments';
 import { Kanban } from '@/components/Kanban';
 import { FileIcon } from '@/components/Attachment/FileIcon';
+import { AttachmentEditorModal } from '@/components/Attachment/AttachmentEditorModal';
 import {
-  ImageGalleryModal,
-  GalleryItem,
-} from '@/components/Attachment/ImageGalleryModal';
-import { DocxEditorModal } from '@/components/Attachment/DocxEditorModal';
-import { VideoPreviewModal } from '@/components/Attachment/VideoPreviewModal';
+  canViewAttachment,
+  useAttachmentViewer,
+} from '@/components/Attachment/useAttachmentViewer';
+import type { ViewableAttachment } from '@/components/Attachment/useAttachmentViewer';
+import { canEditAttachment } from '@/components/Attachment/viewKind';
 import {
   isImageMimetype,
   isAudioMimetype,
   isVideoMimetype,
-  isDocxMimetype,
-  isBrowserViewableMimetype,
   formatFileSize,
 } from '@/components/Attachment/fileIcons';
 import {
@@ -59,7 +58,6 @@ import {
   downloadAttachment,
   googleEditUrl,
   isGoogleEditable,
-  openAttachmentInBrowser,
 } from '@/utils/attachmentUrls';
 import { useTranslation } from 'react-i18next';
 import classes from './Kanban.module.css';
@@ -122,33 +120,31 @@ function CloudPlaceholder({
 interface AttachmentCardProps {
   attachment: Attachment;
   onClick: () => void;
-  onOpenGallery: () => void;
+  /** Окно просмотра со стрелками по карточкам страницы */
+  onView: () => void;
   showAllPreviews: boolean;
 }
 
 function AttachmentCard({
   attachment,
   onClick,
-  onOpenGallery,
+  onView,
   showAllPreviews,
 }: AttachmentCardProps) {
   const [thumbSrc, setThumbSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [manuallyLoaded, setManuallyLoaded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [videoOpen, setVideoOpen] = useState(false);
 
   const isImage = isImageMimetype(attachment.mimetype);
   const isAudio = isAudioMimetype(attachment.mimetype);
   const isVideo = isVideoMimetype(attachment.mimetype);
-  // Правка docx во встроенном редакторе (DocxEditorModal)
-  const canEditDocx =
-    !!attachment.id && isDocxMimetype(attachment.mimetype, attachment.name);
-  // Просмотр без скачивания: видео — плеер в окне, PDF и текст — вкладка
-  // браузера
-  const canPlayVideo = !!attachment.id && isVideo;
-  const canOpenInBrowser =
-    !!attachment.id && isBrowserViewableMimetype(attachment.mimetype);
+  // Правка docx и xlsx во встроенном редакторе (AttachmentEditorModal)
+  const canEdit =
+    !!attachment.id && canEditAttachment(attachment.mimetype, attachment.name);
+  // Просмотр без скачивания; docx и xlsx открывает своя кнопка
+  // «Редактировать»
+  const canView = !!attachment.id && !canEdit && canViewAttachment(attachment);
 
   // Определяем, является ли хранилище облачным (type != 'file')
   const isCloudStorage = useMemo(() => {
@@ -205,13 +201,7 @@ function AttachmentCard({
 
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isImage) {
-      onOpenGallery();
-    } else if (canPlayVideo) {
-      setVideoOpen(true);
-    } else if (canOpenInBrowser) {
-      openAttachmentInBrowser(Number(attachment.id), attachment.checksum);
-    }
+    onView();
   };
 
   const handleLoadCloudPreview = () => {
@@ -382,7 +372,7 @@ function AttachmentCard({
 
           {/* Кнопки действий */}
           <Group gap={4} mt={4}>
-            {(isImage || canPlayVideo || canOpenInBrowser) && (
+            {canView && (
               <Tooltip label="Просмотр">
                 <ActionIcon
                   size="sm"
@@ -403,8 +393,8 @@ function AttachmentCard({
               </ActionIcon>
             </Tooltip>
 
-            {/* Редактировать docx во встроенном редакторе */}
-            {canEditDocx && (
+            {/* Редактировать docx/xlsx во встроенном редакторе */}
+            {canEdit && (
               <Tooltip label="Редактировать">
                 <ActionIcon
                   size="sm"
@@ -464,22 +454,13 @@ function AttachmentCard({
       </Card>
 
       {/* Модалка — сестра карточки, чтобы клики в ней не открывали форму */}
-      {canEditDocx && (
-        <DocxEditorModal
+      {canEdit && (
+        <AttachmentEditorModal
           attachmentId={Number(attachment.id)}
           filename={attachment.name}
+          mimetype={attachment.mimetype}
           opened={editorOpen}
           onClose={() => setEditorOpen(false)}
-        />
-      )}
-
-      {canPlayVideo && (
-        <VideoPreviewModal
-          opened={videoOpen}
-          onClose={() => setVideoOpen(false)}
-          attachmentId={Number(attachment.id)}
-          checksum={attachment.checksum}
-          filename={attachment.name}
         />
       )}
     </>
@@ -491,8 +472,7 @@ function AttachmentCard({
 export function ViewKanbanAttachments() {
   const navigate = useNavigate();
   const { t } = useTranslation('attachments');
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+  const attachmentViewer = useAttachmentViewer();
   const [showAllPreviews, setShowAllPreviews] = useState(false);
 
   const { data } = useFilteredSearchQuery({
@@ -528,28 +508,13 @@ export function ViewKanbanAttachments() {
   );
   const attachments = data?.data || [];
 
-  // Фильтруем только изображения для галереи
-  const imageAttachments = attachments.filter(att =>
-    isImageMimetype(att.mimetype),
-  );
-
-  // Конвертируем в формат GalleryItem
-  const galleryItems: GalleryItem[] = imageAttachments.map(att => ({
+  // Файлы страницы — для стрелок окна просмотра
+  const viewItems: ViewableAttachment[] = attachments.map(att => ({
     id: Number(att.id),
-    name: att.name || undefined,
-    mimetype: att.mimetype || undefined,
+    name: att.name,
+    mimetype: att.mimetype,
+    checksum: att.checksum,
   }));
-
-  const handleOpenGallery = useCallback(
-    (attachmentId: number) => {
-      const index = imageAttachments.findIndex(att => att.id === attachmentId);
-      if (index !== -1) {
-        setGalleryIndex(index);
-        setGalleryOpen(true);
-      }
-    },
-    [imageAttachments],
-  );
 
   // Проверяем, есть ли облачные файлы
   const hasCloudFiles = useMemo(() => {
@@ -583,24 +548,19 @@ export function ViewKanbanAttachments() {
         cols={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }}
         spacing="md"
         p="md">
-        {attachments.map(att => (
+        {attachments.map((att, index) => (
           <AttachmentCard
             key={att.id}
             attachment={att}
             onClick={() => handleClick(Number(att.id))}
-            onOpenGallery={() => handleOpenGallery(Number(att.id))}
+            onView={() => attachmentViewer.open(viewItems[index], viewItems)}
             showAllPreviews={showAllPreviews}
           />
         ))}
       </SimpleGrid>
 
-      {/* Галерея изображений */}
-      <ImageGalleryModal
-        opened={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-        items={galleryItems}
-        initialIndex={galleryIndex}
-      />
+      {/* Окно — вне карточек, чтобы клики в нём не открывали форму */}
+      {attachmentViewer.modal}
     </>
   );
 }

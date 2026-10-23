@@ -1,14 +1,23 @@
+import asyncio
+import email
 import io
 import logging
+import pathlib
+from email import policy
 from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Request, Response, Query
-from fastapi.responses import JSONResponse
-from starlette.status import HTTP_404_NOT_FOUND
+from fastapi.responses import JSONResponse, PlainTextResponse
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_404_NOT_FOUND,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+)
 from PIL import Image
 from urllib.parse import quote
 
 from backend.base.crm.attachments.strategies import get_strategy
 from backend.base.crm.auth_token.app import AuthTokenApp
+from backend.base.system.core.utils import libreoffice
 from backend.base.system.schemas.base_schema import Id
 
 logger = logging.getLogger(__name__)
@@ -36,6 +45,66 @@ RESIZABLE_MIMETYPES = {
     "image/gif",
     "image/webp",
 }
+
+# Код и разметка, которые превью отдаёт исходником (text/plain); text/* и
+# *+xml — тоже, кроме перечисленных в preview_type. Те же типы фронт
+# открывает во вкладке как текст (TEXT_MIMETYPES в viewKind.ts)
+PREVIEW_AS_TEXT_TYPES = {
+    "application/javascript",
+    "application/xml",
+    "application/x-sh",
+    "application/x-yaml",
+    "application/sql",
+}
+
+
+def preview_type(mimetype: str | None) -> tuple[str | None, str]:
+    """Как превью отдаёт файл: (Content-Type вместо настоящего или None,
+    inline/attachment). Превью открывают и по прямой ссылке — загруженный
+    HTML, SVG или XML не должен выполнить скрипты на домене CRM."""
+    mimetype = mimetype or ""
+    # SVG показывает <img> (скрипты там не работают), по ссылке — скачать
+    if mimetype == "image/svg+xml":
+        return None, "attachment"
+    # Это браузер только показывает
+    if mimetype.startswith(("image/", "video/", "audio/")) or mimetype in (
+        "application/pdf",
+        "application/json",
+        "text/plain",
+    ):
+        return None, "inline"
+    # Остальной текст и разметка (html, xml, js…) — исходником
+    if (
+        mimetype.startswith("text/")
+        or mimetype.endswith("+xml")
+        or mimetype in PREVIEW_AS_TEXT_TYPES
+    ):
+        return "text/plain; charset=utf-8", "inline"
+    # Прочее (архивы, офис, неизвестный тип) — скачать
+    return None, "attachment"
+
+
+# Документы, которые просмотр показывает как PDF через LibreOffice (Writer) —
+# по расширению имени: по нему же LibreOffice выбирает формат на входе
+OFFICE_PDF_SUFFIXES = {".doc", ".docm", ".odt", ".ott", ".fodt", ".rtf"}
+
+
+def parse_email(content: bytes) -> dict:
+    """Письмо (.eml) → заголовки, тело (HTML и текст) и имена вложений."""
+    message = email.message_from_bytes(content, policy=policy.default)
+    html = message.get_body(preferencelist=("html",))
+    text = message.get_body(preferencelist=("plain",))
+    return {
+        "subject": str(message["subject"] or ""),
+        "from": str(message["from"] or ""),
+        "to": str(message["to"] or ""),
+        "date": str(message["date"] or ""),
+        "html": html.get_content() if html else "",
+        "text": text.get_content() if text else "",
+        "attachments": [
+            part.get_filename() or "" for part in message.iter_attachments()
+        ],
+    }
 
 
 def resize_image(
@@ -179,11 +248,15 @@ async def attachment_preview(
         return Response(status_code=304, headers={"ETag": etag})
 
     # Без filename* браузер не переведет проценты обратно в буквы
+    content_type, disposition = preview_type(attach.mimetype)
     headers = {
-        "Content-Disposition": f"inline; filename*=utf-8''{quote(attach.name, safe='')}",
+        "Content-Disposition": f"{disposition}; filename*=utf-8''{quote(attach.name, safe='')}",
         "Cache-Control": "private, max-age=86400, immutable",
         "ETag": etag,
     }
+    # Заголовок перекрывает media_type и в ответах стратегий хранилищ
+    if content_type:
+        headers["Content-Type"] = content_type
 
     # Уменьшенная картинка (указаны размеры) — ресайз в памяти
     if (w or h) and attach.mimetype in RESIZABLE_MIMETYPES:
@@ -223,6 +296,33 @@ async def attachment_preview(
     )
 
 
+@router_private.get("/attachments/{attachment_id}/email")
+async def attachment_email(req: Request, attachment_id: Id):
+    """Письмо .eml для просмотра без скачивания: заголовки, тело, имена
+    вложений. HTML письма санитизирует фронт."""
+    env: Environment = req.app.state.env
+    attach = await env.models.attachment.search_one(
+        filter=[("id", "=", attachment_id)],
+        fields=[
+            "id",
+            "res_model",
+            "res_id",
+            "name",
+            "storage_file_url",
+            "storage_file_id",
+            "mimetype",
+            "storage_id",
+            "content",
+        ],
+    )
+    if not attach:
+        return JSONResponse(
+            content={"error": "#NOT_FOUND"}, status_code=HTTP_404_NOT_FOUND
+        )
+
+    return parse_email(await attach.read_content())
+
+
 # ── Cookie-based routes for binary content ──────────────
 # Дублируют /attachments/{id} и /attachments/{id}/preview
 # но авторизуются через HttpOnly cookie (cookie_token).
@@ -247,3 +347,57 @@ async def attachment_preview_cookie(
 ):
     """Превью файла (авторизация через cookie)"""
     return await attachment_preview(req, attachment_id, w, h)
+
+
+@router_content.get("/attachments/{attachment_id}/content/pdf")
+async def attachment_pdf_cookie(req: Request, attachment_id: Id):
+    """Документ Word/OpenDocument/RTF как PDF — просмотр во вкладке
+    браузера (авторизация через cookie)."""
+    env: Environment = req.app.state.env
+    attach = await env.models.attachment.search_one(
+        filter=[("id", "=", attachment_id)],
+        fields=[
+            "id",
+            "res_model",
+            "res_id",
+            "name",
+            "storage_file_url",
+            "storage_file_id",
+            "mimetype",
+            "storage_id",
+            "content",
+        ],
+    )
+    if not attach:
+        return JSONResponse(
+            content={"error": "#NOT_FOUND"}, status_code=HTTP_404_NOT_FOUND
+        )
+
+    name = pathlib.PurePath(attach.name or "document")
+    if name.suffix.lower() not in OFFICE_PDF_SUFFIXES:
+        return JSONResponse(
+            content={"error": "#UNSUPPORTED_TYPE"},
+            status_code=HTTP_400_BAD_REQUEST,
+        )
+
+    content = await attach.read_content()
+    # Ответ открыт во вкладке — ошибку показываем там же текстом
+    try:
+        pdf = await asyncio.to_thread(
+            libreoffice.convert_to_pdf, content, name.suffix.lower()
+        )
+    except RuntimeError as e:
+        return PlainTextResponse(
+            f"Не удалось показать документ: {e}",
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    pdf_name = quote(name.with_suffix(".pdf").name, safe="")
+    return Response(
+        headers={
+            "Content-Disposition": f"inline; filename*=utf-8''{pdf_name}",
+            "Cache-Control": "private, max-age=86400, immutable",
+        },
+        media_type="application/pdf",
+        content=pdf,
+    )
