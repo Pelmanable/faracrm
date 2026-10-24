@@ -1,5 +1,7 @@
-/* Тёмное полноэкранное окно: тулбар сверху, файл по центру */
-.content {
+/* Тёмное полноэкранное окно: тулбар сверху, файл по центру.
+   Удвоенный класс — в проде CSS чанка подключается раньше Mantine,
+   и одинарный проигрывает фону Paper (.m_1b7284a3) */
+.content.content {
   background-color: rgba(0, 0, 0, 0.95);
 }
 
@@ -32,10 +34,12 @@
   padding: 60px var(--mantine-spacing-md) var(--mantine-spacing-md);
 }
 
-.navButton {
+/* Удвоенный класс — иначе в проде position: relative у ActionIcon.
+   translate, а не transform: transform при нажатии занят .mantine-active */
+.navButton.navButton {
   position: fixed;
   top: 50%;
-  transform: translateY(-50%);
+  translate: 0 -50%;
   z-index: 1001;
   opacity: 0.7;
   transition: opacity 0.2s ease;

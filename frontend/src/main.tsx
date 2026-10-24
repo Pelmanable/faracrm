@@ -1,17 +1,15 @@
-// Базовые стили Mantine (ОБЯЗАТЕЛЬНО возвращаем)
-import '@mantine/core/styles.css';
-import '@mantinex/mantine-header/styles.css';
+// Порядок слоёв — до любых стилей библиотек
+import './styles/layers.css';
 
-// Стили DataTable (ОСТАВЛЯЕМ ТОЛЬКО ОДИН ИМПОРТ, БЕЗ .layer)
-import 'mantine-datatable/styles.css';
+// Стили Mantine — в слоях: в проде CSS чанков подключается раньше
+// index-*.css, и без слоёв Mantine перебивал наши классы той же специфичности
+import '@mantine/core/styles.layer.css';
+import '@mantinex/mantine-header/styles.layer.css';
+import 'mantine-datatable/styles.layer.css';
+import '@mantine/dates/styles.layer.css';
+import '@mantine/notifications/styles.layer.css';
+import '@mantine/tiptap/styles.layer.css';
 
-// Остальные стили компонентов
-import '@mantine/dates/styles.css';
-import '@mantine/notifications/styles.css';
-import '@mantine/tiptap/styles.css';
-
-// Ваши глобальные стили импортируются САМЫМИ ПОСЛЕДНИМИ,
-// чтобы при необходимости перебивать стили библиотек
 import './styles/global-mobile.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
