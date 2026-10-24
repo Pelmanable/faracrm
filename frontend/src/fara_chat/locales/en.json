@@ -80,6 +80,8 @@
   "downloadFile": "Download file",
   "edit": "Edit",
   "delete": "Delete",
+  "deleteForever": "Delete forever",
+  "deleteForeverConfirm": "The message and its files will be deleted permanently.",
   "pin": "Pin",
   "unpin": "Unpin",
   "markAsUnread": "Mark as unread",

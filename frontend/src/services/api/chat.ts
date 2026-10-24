@@ -424,14 +424,15 @@ const chatApi = api.injectEndpoints({
       ],
     }),
 
-    // Delete message
+    // Delete message: мягко (скрыть) или навсегда — с файлами, админу чата
     deleteMessage: build.mutation<
       { success: boolean },
-      { chatId: number; messageId: number }
+      { chatId: number; messageId: number; permanent?: boolean }
     >({
-      query: ({ chatId, messageId }) => ({
+      query: ({ chatId, messageId, permanent }) => ({
         url: `/chats/${chatId}/messages/${messageId}`,
         method: 'DELETE',
+        params: permanent ? { permanent: true } : undefined,
       }),
       async onQueryStarted(
         { chatId, messageId },

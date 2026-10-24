@@ -5,7 +5,8 @@ Tests cover:
 - GET /chats/{id}/messages - list messages with pagination
 - POST /chats/{id}/messages - send message
 - PATCH /chats/{id}/messages/{id} - edit message
-- DELETE /chats/{id}/messages/{id} - delete message
+- DELETE /chats/{id}/messages/{id} - delete message (мягко; навсегда —
+  admin чата, с вложениями и файлами)
 - POST /chats/{id}/messages/{id}/pin - pin/unpin
 - POST /chats/{id}/read - mark as read
 - POST /chats/{id}/messages/{id}/reactions - add/remove reaction
@@ -15,16 +16,22 @@ Tests cover:
 Run: pytest tests/integration/messages/test_messages_api.py -v -m integration
 """
 
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
 
 pytestmark = [pytest.mark.integration, pytest.mark.api]
+from backend.base.crm.attachments.models.attachments import Attachment
 from backend.base.crm.chat.models.chat import Chat
 from backend.base.crm.chat.models.chat_message import (
     ChatMessage,
     WS_BODY_LIMIT,
 )
 from backend.base.crm.chat.models.chat_member import ChatMember
+from backend.base.crm.chat.models.chat_message_reaction import (
+    ChatMessageReaction,
+)
 from backend.base.crm.users.models.users import User
 from backend.base.crm.languages.models.language import Language
 from backend.base.system.dotorm_databases_postgres.app import (
@@ -265,7 +272,7 @@ class TestEditMessageAPI:
 class TestDeleteMessageAPI:
     """Tests for DELETE /chats/{chat_id}/messages/{message_id}."""
 
-    async def _setup(self, authenticated_client):
+    async def _setup(self, authenticated_client, is_admin=False):
         client, user_id, token = authenticated_client
 
         chat_id = await Chat.create(Chat(name="Delete Chat"))
@@ -274,6 +281,7 @@ class TestDeleteMessageAPI:
                 chat_id=chat_id,
                 user_id=user_id,
                 is_active=True,
+                is_admin=is_admin,
             )
         )
 
@@ -299,6 +307,60 @@ class TestDeleteMessageAPI:
 
         msg = await ChatMessage.get(msg_id)
         assert msg.is_deleted is True
+
+    async def test_delete_forever_needs_chat_admin(
+        self, authenticated_client, mock_chat_ws
+    ):
+        """Своё сообщение навсегда — нельзя без прав админа чата."""
+        client, chat_id, msg_id = await self._setup(authenticated_client)
+
+        response = await client.delete(
+            f"/chats/{chat_id}/messages/{msg_id}", params={"permanent": True}
+        )
+
+        assert response.status_code == 403
+        msg = await ChatMessage.get(msg_id)
+        assert msg.is_deleted is False
+
+    async def test_delete_forever_by_chat_admin(
+        self, authenticated_client, mock_chat_ws, filestore
+    ):
+        """Админ чата удаляет навсегда: сообщение, реакции, вложения и их
+        файлы."""
+        client, chat_id, msg_id = await self._setup(
+            authenticated_client, is_admin=True
+        )
+        _, user_id, _ = authenticated_client
+        await ChatMessageReaction.create(
+            ChatMessageReaction(message_id=msg_id, user_id=user_id, emoji="👍")
+        )
+        attachment_id = await Attachment.create(
+            Attachment(
+                name="a.txt",
+                res_model="chat_message",
+                res_id=msg_id,
+                content=b"file",
+            )
+        )
+        file_path = Path(
+            (await Attachment.get(attachment_id)).storage_file_url
+        )
+
+        response = await client.delete(
+            f"/chats/{chat_id}/messages/{msg_id}", params={"permanent": True}
+        )
+
+        assert response.status_code == 200
+        assert not await ChatMessage.search(
+            filter=[("id", "=", msg_id)], fields=["id"]
+        )
+        assert not await ChatMessageReaction.search(
+            filter=[("message_id", "=", msg_id)], fields=["id"]
+        )
+        assert not await Attachment.search(
+            filter=[("id", "=", attachment_id)], fields=["id"]
+        )
+        assert not file_path.exists()
 
 
 class TestPinMessageAPI:

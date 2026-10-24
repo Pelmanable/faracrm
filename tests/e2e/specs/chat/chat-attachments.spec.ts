@@ -2,9 +2,9 @@ import { test, expect } from '../../fixtures';
 import { ChatPage } from '../../pages/ChatPage';
 
 /**
- * E2E: файл и голосовое в чате. Файл грузится частями сразу при выборе
- * (PATCH /attachments/uploads/{id}), в сообщение уходит его upload_id;
- * голосовое пишется с фейкового микрофона Chromium и уходит так же.
+ * E2E: файл и голосовое в чате. И файл, и голосовое грузятся частями
+ * (PATCH /attachments/uploads/{id}) по «Отправить», в сообщение уходит их
+ * upload_id; голосовое пишется с фейкового микрофона Chromium.
  */
 
 // Фейковый микрофон: разрешение без окна, звук — тестовый сигнал
@@ -34,7 +34,7 @@ test.describe('Чат — файлы и голосовые', () => {
     if (chatId) await api.deleteChat(adminSession, chatId).catch(() => {});
   });
 
-  test('файл: загрузка частями при выборе и отправка', async ({
+  test('файл: загрузка частями по «Отправить»', async ({
     page,
     api,
     adminSession,
@@ -44,9 +44,6 @@ test.describe('Чат — файлы и голосовые', () => {
     await chat.openChat(chatName);
 
     const content = Buffer.from(`E2E chat file ${Date.now()}`);
-    const part = page.waitForResponse(r =>
-      isPart(r.request().method(), r.url()),
-    );
     // Скрытый input пункта «Файл» скрепки
     await page
       .locator('input[type="file"][accept="*/*"]')
@@ -56,17 +53,17 @@ test.describe('Чат — файлы и голосовые', () => {
         mimeType: 'text/plain',
         buffer: content,
       });
-    expect((await part).ok()).toBe(true);
 
-    // «Отправить» активна, когда файл загружен
-    const sendButton = page.locator('button:has(svg.tabler-icon-send)').last();
-    await expect(sendButton).toBeEnabled({ timeout: 10_000 });
+    const part = page.waitForResponse(r =>
+      isPart(r.request().method(), r.url()),
+    );
     const sent = page.waitForResponse(
       r =>
         r.request().method() === 'POST' &&
         r.url().includes(`/chats/${chatId}/messages`),
     );
-    await sendButton.click();
+    await page.locator('button:has(svg.tabler-icon-send)').last().click();
+    expect((await part).ok()).toBe(true);
     const response = await sent;
     expect(response.ok()).toBe(true);
 

@@ -403,10 +403,19 @@ async def post_message(req: Request, chat_id: int, body: MessageCreate):
 
 
 @router_private.delete("/chats/{chat_id}/messages/{message_id}")
-async def delete_message(req: Request, chat_id: int, message_id: int):
+async def delete_message(
+    req: Request,
+    chat_id: int,
+    message_id: int,
+    permanent: bool = Query(
+        False, description="Навсегда: с вложениями и их файлами"
+    ),
+):
     """
     Удалить сообщение.
-    Можно удалять свои сообщения или чужие с правом can_delete_others.
+    Обычно — мягко (скрыть): свои сообщения или чужие с правом
+    can_delete_others. Навсегда (permanent) — только админ чата или
+    суперпользователь: сообщение уходит из базы вместе с файлами.
     """
     env: "Environment" = req.app.state.env
     auth_session: "Session" = req.state.session
@@ -424,6 +433,14 @@ async def delete_message(req: Request, chat_id: int, message_id: int):
         message.author_user_id and message.author_user_id.id == user_id
     )
     is_chat_admin = member.is_admin or auth_session.user_id.is_admin
+    if permanent and not is_chat_admin:
+        raise FaraException(
+            {
+                "content": "PERMISSION_DENIED",
+                "detail": "Only chat admin can delete messages permanently",
+                "status_code": HTTP_403_FORBIDDEN,
+            }
+        )
     if (
         not is_own_message
         and not is_chat_admin
@@ -437,8 +454,11 @@ async def delete_message(req: Request, chat_id: int, message_id: int):
             }
         )
 
-    # Soft delete
-    await message.update(env.models.chat_message(is_deleted=True))
+    if permanent:
+        await message.delete_forever()
+    else:
+        # Soft delete
+        await message.update(env.models.chat_message(is_deleted=True))
 
     # Уведомляем через WebSocket
     await env.apps.chat.chat_manager.send_to_chat(

@@ -186,8 +186,10 @@ export function VoiceRecorder({
 
   // Recording or recorded state
   return (
-    <Box className={classes.container}>
-      <Group gap="xs" wrap="nowrap" miw={0}>
+    <Box
+      className={classes.container}
+      data-recorded={state === 'recorded' || undefined}>
+      <Group gap="xs" wrap="nowrap" miw={0} className={classes.row}>
         {state === 'recording' && (
           <>
             <Box className={classes.recordingIndicator} />

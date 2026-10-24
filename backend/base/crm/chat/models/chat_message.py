@@ -522,6 +522,22 @@ class ChatMessage(AuditMixin, PolymorphicParentMixin):
             )
         )
 
+    async def delete_forever(self) -> None:
+        """
+        Удалить сообщение навсегда, а не мягко (is_deleted): сначала
+        реакции — их FK на сообщение не каскадный, затем само сообщение.
+        Вложения вместе с файлами удаляет PolymorphicParentMixin, внешние id
+        и ссылки ответов чистят FK (cascade / set null).
+        """
+        reactions = env.models.chat_message_reaction.__table__
+        async with env.apps.db.get_transaction() as session:
+            await session.execute(
+                f"DELETE FROM {reactions} WHERE message_id = %s",
+                (self.id,),
+                cursor="void",
+            )
+            await self.delete()
+
     @hybridmethod
     async def post_system_message(
         self,

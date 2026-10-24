@@ -20,6 +20,7 @@ import {
   IconCopy,
   IconEdit,
   IconTrash,
+  IconTrashX,
   IconPin,
   IconPinFilled,
   IconEyeOff,
@@ -52,8 +53,9 @@ import {
   useAttachmentViewer,
 } from '@/components/Attachment';
 import { downloadAttachment } from '@/utils/attachmentUrls';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '@/store/store';
+import { selectCurrentSession } from '@/slices/authSlice';
 import styles from './ChatMessages.module.css';
 import {
   EmailMessageContent,
@@ -151,6 +153,8 @@ export function ChatMessages({
     message: ChatMessage | null;
   }>({ opened: false, message: null });
   const [editText, setEditText] = useState('');
+  // Сообщение, ждущее подтверждения «Удалить навсегда»
+  const [deleteForever, setDeleteForever] = useState<ChatMessage | null>(null);
   const [forwardModal, setForwardModal] = useState<{
     opened: boolean;
     message: ChatMessage | null;
@@ -281,6 +285,9 @@ export function ChatMessages({
     isOwnMessage(message) || isCurrentUserChatAdmin;
   const canDeleteMessage = (message: ChatMessage) =>
     isOwnMessage(message) || isCurrentUserChatAdmin;
+  // Навсегда (с файлами) — админ чата или суперпользователь, как на бэке
+  const isSuperuser = !!useSelector(selectCurrentSession)?.user_id?.is_admin;
+  const canDeleteForever = isCurrentUserChatAdmin || isSuperuser;
 
   // Скачивание вынесено в общий хелпер downloadAttachment
   // (utils/attachmentUrls): на iOS Safari window.open для ответа с
@@ -377,6 +384,22 @@ export function ChatMessages({
       notifications.show({ message: t('errorDeletingMessage'), color: 'red' });
     }
     setContextMenu(null);
+  };
+
+  const handleDeleteForever = async () => {
+    if (!deleteForever) return;
+    try {
+      await deleteMessage({
+        chatId: chat.id,
+        messageId: deleteForever.id,
+        permanent: true,
+      }).unwrap();
+      notifications.show({ message: t('messageDeleted'), color: 'green' });
+      refetch();
+    } catch {
+      notifications.show({ message: t('errorDeletingMessage'), color: 'red' });
+    }
+    setDeleteForever(null);
   };
 
   const handlePin = async () => {
@@ -959,9 +982,37 @@ export function ChatMessages({
                 <Text size="sm">{t('delete')}</Text>
               </Box>
             )}
+            {canDeleteForever && (
+              <Box
+                className={styles.contextMenuItemDanger}
+                onClick={() => {
+                  setDeleteForever(contextMenu.message);
+                  setContextMenu(null);
+                }}>
+                <IconTrashX size={16} />
+                <Text size="sm">{t('deleteForever')}</Text>
+              </Box>
+            )}
           </Stack>
         </Paper>
       )}
+
+      <Modal
+        opened={!!deleteForever}
+        onClose={() => setDeleteForever(null)}
+        title={t('deleteForever')}
+        size="sm"
+        centered>
+        <Text size="sm">{t('deleteForeverConfirm')}</Text>
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => setDeleteForever(null)}>
+            {t('cancel')}
+          </Button>
+          <Button color="red" onClick={handleDeleteForever}>
+            {t('deleteForever')}
+          </Button>
+        </Group>
+      </Modal>
 
       <Modal
         opened={!!reactionPicker?.opened}

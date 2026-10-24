@@ -38,6 +38,21 @@
   min-width: 0;
 }
 
+/* Запись готова: поля ввода рядом нет (ChatInput прячет его) — плеер на всю
+   строку, иначе его ползунок сжимается до точки */
+.container[data-recorded] {
+  flex: 1;
+}
+
+.container[data-recorded] .row {
+  flex: 1;
+}
+
+.container[data-recorded] .audioPreview {
+  flex: 1;
+  max-width: none;
+}
+
 .audioPreview::-webkit-media-controls-panel {
   background-color: transparent;
 }
