@@ -42,10 +42,15 @@ server {
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
 
-    # Лимит на загрузку файлов (договоры, сканы)
-    client_max_body_size 100m;
+    # Предел одного запроса, а не файла: файлы грузятся частями по 8 МБ,
+    # размер файла (attachments.max_upload_size) держит бэкенд. 32 МБ —
+    # часть с запасом и шаблон DOCX в предпросмотре конструктора отчётов.
+    # То же значение — в docker/nginx.conf.
+    client_max_body_size 32m;
 
-    # Длинные таймауты для отчётов и импорта
+    # Таймауты — между двумя чтениями/записями, а не на весь запрос.
+    # 300 с — отчётам, импорту и сохранению записи с файлом (отправка
+    # файла в облачное хранилище пока идёт внутри этого запроса).
     proxy_read_timeout    300s;
     proxy_connect_timeout 30s;
     proxy_send_timeout    300s;
@@ -98,6 +103,10 @@ server {
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Ответ не буферизуем: большой файл идёт клиенту потоком (Range
+        # проходит насквозь), без временных файлов nginx на диске.
+        proxy_buffering off;
     }
 
     # ── / → frontend (всё остальное, включая SPA-роутинг) ──────────

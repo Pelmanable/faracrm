@@ -307,17 +307,7 @@ class ChatApp(Service):
     async def _init_system_settings(self, env: "Environment"):
         """Создаёт настройки по умолчанию для модуля chat."""
         await env.models.system_settings.ensure_defaults(
-            [
-                {
-                    "key": "chat.max_file_size",
-                    "value": {"value": 10 * 1024 * 1024},
-                    "description": "Максимальный размер файла в чате в байтах (по умолчанию 10 МБ)",
-                    "module": "chat",
-                    "is_system": False,
-                    "cache_ttl": -1,
-                },
-                *self._turn_settings_defaults(),
-            ]
+            self._turn_settings_defaults()
         )
 
     @staticmethod
