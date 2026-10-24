@@ -424,7 +424,8 @@ class ChatMessage(AuditMixin, PolymorphicParentMixin):
         """Сообщение пользователя в чат: сохранить с вложениями, отправить во
         внешний канал, оповестить участников.
 
-        files — загруженные файлы (name, mimetype, size, content, is_voice).
+        files — загруженные частями файлы (name, mimetype, size, is_voice,
+        upload_id).
         Возвращает сообщение и его вложения в форме REST.
 
         Внешняя отправка идёт после коммита: запрос к провайдеру не держит
@@ -445,7 +446,7 @@ class ChatMessage(AuditMixin, PolymorphicParentMixin):
                     name=file.name,
                     mimetype=file.mimetype,
                     size=file.size,
-                    content=file.content,  # уже bytes
+                    upload_id=file.upload_id,
                     res_model="chat_message",
                     res_id=message.id,
                     is_voice=file.is_voice,

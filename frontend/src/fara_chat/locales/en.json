@@ -117,6 +117,7 @@
   "recordVoice": "Record voice message",
   "stopRecording": "Stop recording",
   "attachedFiles": "Attached: {{count}}",
+  "uploadFailed": "Failed to upload file {{name}}",
   "clearAll": "Clear all",
   "all": "All",
   "internal": "Internal",

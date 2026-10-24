@@ -19,7 +19,10 @@ export const baseQuery = fetchBaseQuery({
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
-    headers.set('Content-Type', 'application/json');
+    // Свой тип — у тела-байтов (часть загрузки файла), иначе JSON
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
     headers.set('Accept', 'application/json');
     return headers;
   },

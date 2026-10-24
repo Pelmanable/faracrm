@@ -234,14 +234,11 @@ export const prepareValuesToSave = (
 
     if (field.type == 'PolymorphicMany2one') {
       if (values[field.name] && Object.keys(values[field.name]).length) {
-        // Если есть content - это новый файл, отправляем весь объект
-        // Если нет content, но есть id - файл не изменился, отправляем только id
-        if (!values[field.name].content && values[field.name].id) {
+        // Есть upload_id — новый файл (загружен частями), отправляем весь
+        // объект. Нет upload_id, но есть id — файл не изменился, не шлём
+        if (!values[field.name].upload_id && values[field.name].id) {
           delete values[field.name];
-        } else {
-          values[field.name] = values[field.name];
         }
-        // Иначе оставляем весь объект (новый файл с content)
       }
     }
     if (field.type == 'Many2one') {

@@ -43,7 +43,13 @@ export function SpreadsheetEditorModal({
   const { t } = useTranslation('common');
   const frameRef = useRef<SpreadsheetEditorFrameHandle>(null);
   const { bytes, loadError, markDirty, saving, save, handleClose } =
-    useAttachmentFileEditor({ attachmentId, opened, onClose, onSaved });
+    useAttachmentFileEditor({
+      attachmentId,
+      filename,
+      opened,
+      onClose,
+      onSaved,
+    });
 
   const handleSave = useCallback(
     () => save(() => frameRef.current?.save()),

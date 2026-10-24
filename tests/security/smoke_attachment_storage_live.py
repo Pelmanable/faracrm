@@ -16,7 +16,6 @@
     .venv3.14\\Scripts\\python.exe tests\\security\\smoke_attachment_storage_live.py
 """
 
-import base64
 import os
 import sys
 import tempfile
@@ -78,14 +77,37 @@ def main() -> None:
         client.delete(f"/auto/attachments/{planted}")
 
     # 2. Обычная загрузка сотрудником работает, скачивание отдаёт файл.
+    # Файл — загрузкой частями (одна часть), во вложение — upload_id.
     data = b"smoke attachment content"
+    r = client.post(
+        "/attachments/uploads",
+        json={
+            "name": "smoke.txt",
+            "mimetype": "text/plain",
+            "size": len(data),
+        },
+    )
+    check("POST /attachments/uploads -> 200", r.status_code == 200, r.text)
+    if r.status_code != 200:
+        return
+    upload_id = r.json()["id"]
+    r = client.patch(
+        f"/attachments/uploads/{upload_id}",
+        content=data,
+        headers={
+            "Upload-Offset": "0",
+            "Content-Type": "application/offset+octet-stream",
+        },
+    )
+    check("PATCH части -> 200", r.status_code == 200, r.text)
     r = client.post(
         "/auto/attachments",
         json={
             "name": "smoke.txt",
             "mimetype": "text/plain",
+            "size": len(data),
             "public": True,
-            "content": base64.b64encode(data).decode(),
+            "upload_id": upload_id,
         },
     )
     check("POST обычной загрузки -> 200", r.status_code == 200, r.text)

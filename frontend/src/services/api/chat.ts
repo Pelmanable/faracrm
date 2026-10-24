@@ -310,7 +310,6 @@ const chatApi = api.injectEndpoints({
             mimetype: att.mimetype,
             size: att.size,
             is_voice: att.is_voice,
-            content: att.content,
           })),
         };
 
@@ -972,7 +971,8 @@ export interface SendMessageAttachment {
   name: string;
   mimetype: string;
   size: number;
-  content: string;
+  /** Файл, загруженный частями (useUploadFile) */
+  upload_id: number;
   is_voice?: boolean;
 }
 

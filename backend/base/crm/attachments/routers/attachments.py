@@ -5,16 +5,20 @@ import logging
 import pathlib
 from email import policy
 from typing import TYPE_CHECKING
-from fastapi import APIRouter, Depends, Request, Response, Query
+from fastapi import APIRouter, Depends, Header, Request, Response, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_413_CONTENT_TOO_LARGE,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 from PIL import Image
 from urllib.parse import quote
 
+from backend.base.crm.attachments.models.attachments_upload import PART_SIZE
 from backend.base.crm.attachments.strategies import get_strategy
 from backend.base.crm.auth_token.app import AuthTokenApp
 from backend.base.system.core.utils import libreoffice
@@ -153,6 +157,92 @@ async def attachment_route_model_fields(req: Request, model_name: str):
     field_names = list(model_cls.get_public_fields())
 
     return model_cls.get_fields_info_list(field_names)
+
+
+# ── Загрузка частями ────────────────────────────────────
+# Файл приходит частями по PART_SIZE по порядку, со смещением (как в tus):
+# каждый запрос маленький — лимиты nginx не мешают, обрыв докачивается.
+# Готовая загрузка (offset == size) передаётся вместо content как
+# upload_id: при создании вложения, в отправке сообщения чата, в PUT.
+
+
+class UploadStart(BaseModel):
+    name: str = Field(..., description="File name")
+    mimetype: str | None = Field(None, description="MIME type")
+    size: int = Field(..., ge=0, description="File size in bytes")
+
+
+def upload_not_found() -> JSONResponse:
+    return JSONResponse(
+        content={"error": "#NOT_FOUND"}, status_code=HTTP_404_NOT_FOUND
+    )
+
+
+@router_private.post("/attachments/uploads")
+async def upload_start(req: Request, body: UploadStart):
+    """Начать загрузку: {id, part_size, offset}."""
+    env: Environment = req.app.state.env
+    async with env.apps.db.get_transaction():
+        upload = await env.models.attachment_upload.sudo().start(
+            body.name, body.mimetype, body.size
+        )
+    return {"id": upload.id, "part_size": PART_SIZE, "offset": 0}
+
+
+@router_private.patch("/attachments/uploads/{upload_id}")
+async def upload_append(
+    req: Request,
+    upload_id: Id,
+    upload_offset: int = Header(..., ge=0, description="Offset of the part"),
+):
+    """Часть файла (тело — её байты) с позиции Upload-Offset: {offset}.
+    409 с текущим offset — позиция не совпала с полученным."""
+    env: Environment = req.app.state.env
+
+    # Тело читаем с пределом: часть больше PART_SIZE в память не берём
+    chunk = bytearray()
+    async for block in req.stream():
+        chunk += block
+        if len(chunk) > PART_SIZE:
+            return JSONResponse(
+                content={"error": "#PART_TOO_LARGE"},
+                status_code=HTTP_413_CONTENT_TOO_LARGE,
+            )
+
+    async with env.apps.db.get_transaction():
+        upload = await env.models.attachment_upload.sudo().get_own(upload_id)
+        if upload is None:
+            return upload_not_found()
+        received = await upload.append(upload_offset, bytes(chunk))
+
+    if received is None:
+        return JSONResponse(
+            content={"offset": upload.received},
+            status_code=HTTP_409_CONFLICT,
+        )
+    return {"offset": received}
+
+
+@router_private.get("/attachments/uploads/{upload_id}")
+async def upload_status(req: Request, upload_id: Id):
+    """Сколько получено — для докачки после обрыва: {offset, size}."""
+    env: Environment = req.app.state.env
+    upload = await env.models.attachment_upload.sudo().get_own(upload_id)
+    if upload is None:
+        return upload_not_found()
+    return {"offset": upload.received, "size": upload.size}
+
+
+@router_private.delete("/attachments/uploads/{upload_id}")
+async def upload_abort(req: Request, upload_id: Id):
+    """Отменить загрузку: строка и временный файл удаляются."""
+    env: Environment = req.app.state.env
+    async with env.apps.db.get_transaction():
+        upload = await env.models.attachment_upload.sudo().get_own(upload_id)
+        if upload is None:
+            return upload_not_found()
+        await upload.sudo().discard()
+    return {"ok": True}
 
 
 @router_private.get("/attachments/{attachment_id}")

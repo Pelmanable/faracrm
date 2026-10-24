@@ -15,9 +15,10 @@ import {
 import {
   attachmentPreviewUrl,
   downloadAttachment,
-  downloadBase64,
   openAttachmentInBrowser,
+  triggerDownload,
 } from '@/utils/attachmentUrls';
+import { useObjectUrl } from '@/hooks/useObjectUrl';
 import { canOpenTextInTab, getViewKind } from '../viewKind';
 import type { ViewableAttachment } from '../useAttachmentViewer';
 import { ToolbarButton } from './ToolbarButton';
@@ -84,9 +85,10 @@ export function AttachmentViewerModal({
   const kind = getViewKind(item);
   const hasMany = items.length > 1;
 
-  // Ещё не сохранённый файл — из base64, сохранённый — превью-роутом
-  const src = item.content
-    ? `data:${item.mimetype};base64,${item.content}`
+  // Ещё не сохранённый файл — из памяти браузера, сохранённый — превью-роутом
+  const fileUrl = useObjectUrl(item.file);
+  const src = item.file
+    ? (fileUrl ?? '')
     : attachmentPreviewUrl(item.id!, undefined, undefined, item.checksum);
 
   const go = useCallback(
@@ -112,8 +114,8 @@ export function AttachmentViewerModal({
   }, [hasMany, go]);
 
   const handleDownload = () => {
-    if (item.content) {
-      downloadBase64(item.content, item.mimetype ?? '', item.name ?? undefined);
+    if (fileUrl) {
+      triggerDownload(fileUrl, item.name ?? undefined);
     } else {
       downloadAttachment(item.id!, item.name ?? undefined);
     }

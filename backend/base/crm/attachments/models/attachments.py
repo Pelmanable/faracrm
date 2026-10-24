@@ -22,6 +22,7 @@ from backend.base.crm.attachments.strategies import get_strategy, has_strategy
 from backend.base.crm.users.audit_mixin import AuditMixin
 from .attachments_storage import AttachmentStorage
 from .attachments_route import AttachmentRoute
+from .attachments_upload import AttachmentUpload, ContentNotSupported
 
 if TYPE_CHECKING:
     from backend.base.crm.attachments.strategies.strategy import (
@@ -187,11 +188,21 @@ class Attachment(AuditMixin, DotModel):
         "For cloud storages (type != 'file') defaults to False.",
     )
 
-    # Виртуальное поле для содержимого (не сохраняется в БД)
+    # Виртуальное поле для содержимого (не сохраняется в БД). В API файл
+    # приходит загрузкой частями (upload_id), content — ошибка 400
     content: bytes | None = Binary(
         string="Binary content",
         store=False,
+        schema_type=ContentNotSupported,
         help="Computed field, not stored in DB. Used for upload/download.",
+    )
+
+    # Вместо content — готовая загрузка частями (AttachmentUpload.fill)
+    upload_id: int | None = Integer(
+        string="Upload ID",
+        store=False,
+        help="Not stored in DB. Finished chunked upload "
+        "(POST /attachments/uploads) used as file content.",
     )
 
     # ========================================================================
@@ -321,6 +332,7 @@ class Attachment(AuditMixin, DotModel):
     async def create(
         self, payload: Self, session=None, depends_jobs=None
     ) -> int:
+        uploads = await AttachmentUpload.fill([payload])
         # Нет контента или это Binary-sentinel — обычный INSERT без FS
         if (
             not payload
@@ -386,6 +398,7 @@ class Attachment(AuditMixin, DotModel):
                 result.get("storage_parent_name") or parent_folder_name
             )
             await self._save_storage_fields([payload], session)
+            await AttachmentUpload.release(uploads)
 
             return payload.id
 
@@ -396,6 +409,7 @@ class Attachment(AuditMixin, DotModel):
         session=None,
         depends_jobs=None,
     ) -> None:
+        uploads = await AttachmentUpload.fill([payload])
         if (
             not payload.content
             or isinstance(payload.content, Binary)
@@ -406,9 +420,12 @@ class Attachment(AuditMixin, DotModel):
 
         async with env.apps.db.get_transaction():
             # payload.content здесь гарантированно bytes (None и Binary отсечены выше)
-            if not payload.size:
-                payload.size = len(payload.content)
+            payload.size = len(payload.content)
             payload.checksum = hashlib.sha1(payload.content).hexdigest()
+            # size и checksum считает сервер, а PUT автокруда передаёт
+            # только присланные поля — иначе они не запишутся
+            if fields:
+                fields = [*fields, "size", "checksum"]
 
             strategy = get_strategy(self.storage_id.type)
             result = await strategy.update_file(
@@ -423,6 +440,7 @@ class Attachment(AuditMixin, DotModel):
                 payload.storage_file_url = result["storage_file_url"]
 
             await super().update(payload, fields, session, depends_jobs)
+            await AttachmentUpload.release(uploads)
 
     @hybridmethod
     async def create_bulk(
@@ -443,6 +461,7 @@ class Attachment(AuditMixin, DotModel):
         транзакции вызывающего кода). Иначе открываем свою для атомарности
         файлов и INSERT.
         """
+        uploads = await AttachmentUpload.fill(payloads)
         # contextlib.nullcontext позволяет унифицировать ветку "своя
         # транзакция" и "используем переданную" без if/else и дублирования.
         tx = (
@@ -473,6 +492,7 @@ class Attachment(AuditMixin, DotModel):
                 await self._save_storage_fields(
                     [p for p, *_ in writable], active_session
                 )
+                await AttachmentUpload.release(uploads)
 
             return records
 

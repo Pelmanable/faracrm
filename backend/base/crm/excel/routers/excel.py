@@ -8,7 +8,6 @@
 # переопределения моделей (канонизация контактов, прогресс по стадии)
 # срабатывали как при создании из формы.
 
-import base64
 import datetime
 import logging
 from typing import TYPE_CHECKING, Literal
@@ -58,7 +57,9 @@ class ExportRequest(BaseModel):
 
 
 class ExcelFile(BaseModel):
-    content: str  # .xlsx в base64
+    # .xlsx, загруженный частями (POST /attachments/uploads): разбор и
+    # импорт читают один и тот же файл
+    upload_id: int
 
 
 class ImportRequest(ExcelFile):
@@ -82,13 +83,6 @@ def _model(req: Request, model: str) -> "type[DotModel]":
     if Model is None or not Model.__auto_crud__:
         raise _error("#NOT_FOUND", f"Модель «{model}» не найдена", 404)
     return Model
-
-
-def _decode(content: str) -> bytes:
-    try:
-        return base64.b64decode(content, validate=True)
-    except ValueError as e:
-        raise _error("#EXCEL_BAD_FILE", f"Не удалось прочитать файл: {e}")
 
 
 def _read_file(content: bytes) -> tuple[list[str], xlsx.Rows]:
@@ -166,8 +160,12 @@ async def export_excel(req: Request, model: str, payload: ExportRequest):
 async def preview_excel(req: Request, model: str, payload: ExcelFile):
     """Разбор файла: колонки (заголовок + примеры значений) и поля модели,
     которые можно заполнить, — для сопоставления в интерфейсе."""
+    env: "Environment" = req.app.state.env
     Model = _model(req, model)
-    headers, rows = _read_file(_decode(payload.content))
+    _, content = await env.models.attachment_upload.sudo().read(
+        payload.upload_id
+    )
+    headers, rows = _read_file(content)
     importable = xlsx.importable_fields(Model)
     by_lower = {name.lower(): name for name in importable}
     columns = [
@@ -224,7 +222,9 @@ async def import_excel(req: Request, model: str, payload: ImportRequest):
             f"Не сопоставлены обязательные поля: {', '.join(missing)}",
         )
 
-    content = _decode(payload.content)
+    upload, content = await env.models.attachment_upload.sudo().read(
+        payload.upload_id
+    )
     headers, rows = _read_file(content)
     # Поле поиска связи — из заголовка колонки в файле («(name)»).
     lookup = {
@@ -370,6 +370,9 @@ async def import_excel(req: Request, model: str, payload: ImportRequest):
                     "#EXCEL_IMPORT_FAILED", f"Строка {row_number}: {detail}"
                 ) from e
             created += 1
+        # Импорт прошёл — файл больше не нужен. При ошибке остаётся:
+        # пользователь поправит сопоставление и повторит импорт
+        await upload.sudo().discard()
 
     errors.sort(key=lambda item: item["row"])
     return {"created": created, "errors": errors}

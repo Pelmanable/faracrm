@@ -917,6 +917,40 @@ async def sale_factory(db_pool, partner_factory):
     yield create_sale
 
 
+@pytest_asyncio.fixture
+async def filestore(db_pool, tmp_path, monkeypatch):
+    """Файлы вложений и загрузок частями — во временной папке теста.
+
+    Attachment.create открывает транзакцию глобального env — его Postgres-
+    сервис привязываем к тестовой базе. Стратегия filestore кэширует свой
+    путь на процесс — подменяем его на tmp_path (как wired_env). Хранилище
+    и маршрут создаёт post_init модуля attachments, которого в тестах нет.
+
+    Returns:
+        Папка файлстора; временные файлы загрузок — в ней, в .uploads
+    """
+    from backend.base.crm.attachments.models.attachments_route import (
+        AttachmentRoute,
+    )
+    from backend.base.crm.attachments.models.attachments_storage import (
+        AttachmentStorage,
+    )
+    from backend.base.crm.attachments.strategies import get_strategy
+    from backend.base.system.dotorm_databases_postgres.app import (
+        DotormDatabasesPostgresService,
+    )
+
+    DotormDatabasesPostgresService().set_pool(db_pool)
+    monkeypatch.setattr(get_strategy("file"), "_cached_path", str(tmp_path))
+    storage_id = await AttachmentStorage.create(
+        AttachmentStorage(name="Test File Storage", type="file", active=True)
+    )
+    await AttachmentRoute.ensure_default_route_for_storage(
+        await AttachmentStorage.get(storage_id)
+    )
+    return tmp_path
+
+
 # ====================
 # Utility fixtures
 # ====================

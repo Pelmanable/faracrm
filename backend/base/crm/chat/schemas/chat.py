@@ -4,8 +4,8 @@
 from typing import Literal
 from pydantic import BaseModel, Field
 
-from backend.base.system.dotorm.dotorm.integrations.pydantic import (
-    Base64DecodedBytes,
+from backend.base.crm.attachments.models.attachments_upload import (
+    ContentNotSupported,
 )
 
 # ====================== CHAT SCHEMAS ======================
@@ -81,11 +81,12 @@ class AttachmentInput(BaseModel):
     name: str = Field(..., description="File name")
     mimetype: str = Field(..., description="MIME type")
     size: int = Field(..., description="File size in bytes")
-    content: Base64DecodedBytes = Field(
-        ...,
-        description="File content (base64-encoded on the wire, decoded to bytes)",
+    upload_id: int = Field(
+        ..., description="Finished chunked upload (POST /attachments/uploads)"
     )
     is_voice: bool = Field(False, description="Is voice message recording")
+    # Старый формат (base64) — понятная ошибка 400, а не «upload_id обязателен»
+    content: ContentNotSupported = None
 
 
 class MessageCreate(BaseModel):

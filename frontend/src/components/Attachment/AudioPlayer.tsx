@@ -7,10 +7,8 @@ import classes from './AudioPlayer.module.css';
 interface AudioPlayerProps {
   /** ID вложения для загрузки с сервера */
   attachmentId?: number;
-  /** Base64 контент для локальных файлов */
-  content?: string;
-  /** MIME тип */
-  mimetype?: string;
+  /** Ссылка blob: на ещё не сохранённый файл */
+  src?: string;
   /** Голосовое сообщение - показывать волновую форму */
   isVoice?: boolean;
   /** Компактный режим для чата */
@@ -73,8 +71,7 @@ function Waveform({
 
 export function AudioPlayer({
   attachmentId,
-  content,
-  mimetype = 'audio/webm',
+  src,
   isVoice = false,
   compact = false,
 }: AudioPlayerProps) {
@@ -94,24 +91,14 @@ export function AudioPlayer({
     setIsPlaying(false);
     setError(null);
 
-    // Если есть base64 контент
-    if (content) {
-      setAudioSrc(`data:${mimetype};base64,${content}`);
-      return;
-    }
-
-    // Загружаем с сервера через cookie auth
-    if (attachmentId) {
+    // Ещё не сохранённый файл — из памяти браузера (ссылкой владеет
+    // вызывающий), сохранённый — с сервера через cookie auth
+    if (src) {
+      setAudioSrc(src);
+    } else if (attachmentId) {
       setAudioSrc(attachmentContentUrl(attachmentId));
     }
-
-    return () => {
-      // Cleanup blob URL
-      if (audioSrc && audioSrc.startsWith('blob:')) {
-        URL.revokeObjectURL(audioSrc);
-      }
-    };
-  }, [attachmentId, content, mimetype]);
+  }, [attachmentId, src]);
 
   // Audio event handlers
   useEffect(() => {

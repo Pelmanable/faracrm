@@ -183,12 +183,17 @@ test.describe('FormPanels — messages, attachments, activities', () => {
     api,
     adminSession,
   }) => {
-    // Загружаем файл через API (POST /auto/attachments) — это тот же
-    // эндпоинт, что использует AttachmentsPanel, но без зависимости
-    // от Playwright-взаимодействия со скрытым input[type=file].
+    // Загружаем файл через API — те же запросы, что у AttachmentsPanel
+    // (загрузка частями, затем POST /auto/attachments с upload_id), но без
+    // зависимости от Playwright-взаимодействия со скрытым input[type=file].
     const testContent = 'Hello from E2E test!';
     const testFileName = `e2e-test-${Date.now()}.txt`;
-    const base64Content = Buffer.from(testContent).toString('base64');
+    const uploadId = await api.uploadFile(
+      adminSession,
+      testFileName,
+      'text/plain',
+      Buffer.from(testContent),
+    );
 
     await api.createRecord(adminSession, 'attachments', {
       name: testFileName,
@@ -196,7 +201,7 @@ test.describe('FormPanels — messages, attachments, activities', () => {
       res_id: partnerId,
       mimetype: 'text/plain',
       size: testContent.length,
-      content: base64Content,
+      upload_id: uploadId,
       folder: false,
       public: false,
     });

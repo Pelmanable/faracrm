@@ -1,19 +1,20 @@
 /**
  * Общее у встроенных редакторов вложений (docx, xlsx): байты файла при
- * открытии окна, сохранение обратно обычным PUT /auto/attachments/{id} с
- * base64-контентом — тот же путь, что у замены файла в форме вложения
- * (Attachment.update пишет байты в хранилище), — и вопрос перед закрытием
- * с несохранённым.
+ * открытии окна, сохранение обратно загрузкой частями и обычным
+ * PUT /auto/attachments/{id} с её upload_id — тот же путь, что у замены
+ * файла в форме вложения (Attachment.update пишет файл в хранилище), — и
+ * вопрос перед закрытием с несохранённым.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
 import { useUpdateMutation } from '@/services/api/crudApi';
+import { useUploadFile } from '@/hooks/useUploadFile';
 import { attachmentContentUrl } from '@/utils/attachmentUrls';
-import { arrayBufferToBase64 } from '@/utils/base64';
 
 interface AttachmentFileEditorOptions {
   attachmentId: number;
+  filename?: string | null;
   opened: boolean;
   onClose: () => void;
   /** После успешного сохранения — новый размер файла в байтах. */
@@ -22,6 +23,7 @@ interface AttachmentFileEditorOptions {
 
 export function useAttachmentFileEditor({
   attachmentId,
+  filename,
   opened,
   onClose,
   onSaved,
@@ -32,6 +34,7 @@ export function useAttachmentFileEditor({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [update] = useUpdateMutation();
+  const uploadFile = useUploadFile();
 
   // Загрузка файла при открытии; при закрытии — сброс, чтобы следующее
   // открытие показало актуальные байты, а не старую копию.
@@ -74,11 +77,13 @@ export function useAttachmentFileEditor({
       try {
         const buffer = await getBuffer();
         if (!buffer) return;
-        const content = await arrayBufferToBase64(buffer);
+        const uploadId = await uploadFile(new Blob([buffer]), {
+          name: filename || 'file',
+        });
         await update({
           model: 'attachments',
           id: attachmentId,
-          values: { content, size: buffer.byteLength },
+          values: { upload_id: uploadId, size: buffer.byteLength },
         }).unwrap();
         setDirty(false);
         notifications.show({ message: t('docxEditor.saved'), color: 'green' });
@@ -93,7 +98,7 @@ export function useAttachmentFileEditor({
         setSaving(false);
       }
     },
-    [attachmentId, onSaved, t, update],
+    [attachmentId, filename, onSaved, t, update, uploadFile],
   );
 
   const markDirty = useCallback(() => setDirty(true), []);

@@ -35,8 +35,8 @@ export const { useTemplateFieldsQuery } = designApi;
 
 export interface PreviewArgs {
   templateId: number;
-  /** DOCX из редактора в base64 */
-  content: string;
+  /** DOCX из редактора */
+  document: ArrayBuffer;
   params: Record<string, unknown>;
   outputFormat: 'docx' | 'pdf';
 }
@@ -47,26 +47,30 @@ export interface PreviewFile {
   filename: string;
 }
 
-/** Рендер превью; бинарный ответ, поэтому fetch, а не RTK Query. */
+/**
+ * Рендер превью; бинарный ответ, поэтому fetch, а не RTK Query. Тело —
+ * сам DOCX (разовый рендер, не сохранение файла), параметры — в строке
+ * запроса.
+ */
 export async function fetchReportPreview(
   token: string,
   args: PreviewArgs,
 ): Promise<PreviewFile> {
-  const response = await fetch(`${API_BASE_URL}/reports/preview`, {
+  const query = new URLSearchParams({
+    template_id: String(args.templateId),
+    output_format: args.outputFormat,
+    params: JSON.stringify(args.params),
+  });
+  const response = await fetch(`${API_BASE_URL}/reports/preview?${query}`, {
     method: 'POST',
     // verify_access требует и Bearer, и HttpOnly-куку (Token Binding):
     // без credentials кука на другой порт не уйдёт → #UNAUTHORIZED
     credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/octet-stream',
     },
-    body: JSON.stringify({
-      template_id: args.templateId,
-      content: args.content,
-      params: args.params,
-      output_format: args.outputFormat,
-    }),
+    body: args.document,
   });
   if (!response.ok) {
     let message = `HTTP ${response.status}`;

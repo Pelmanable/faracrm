@@ -328,6 +328,47 @@ export class ApiHelper {
   }
 
   /**
+   * Загрузить файл частями (одной частью — файлы тестов маленькие):
+   * upload_id — вместо content при создании вложения или в сообщении.
+   */
+  async uploadFile(
+    session: Session,
+    name: string,
+    mimetype: string,
+    data: Buffer,
+  ): Promise<number> {
+    const start = await this.request(session, 'POST', '/attachments/uploads', {
+      name,
+      mimetype,
+      size: data.length,
+    });
+    if (!start.ok) throw new Error(`Upload start failed: ${start.status}`);
+    const { id } = await start.json();
+    const part = await fetch(`${this.apiUrl}/attachments/uploads/${id}`, {
+      method: 'PATCH',
+      headers: {
+        ...this.headers(session),
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': '0',
+      },
+      body: new Uint8Array(data),
+    });
+    if (!part.ok) throw new Error(`Upload part failed: ${part.status}`);
+    return id;
+  }
+
+  /** Выгрузить записи в .xlsx (тот же файл, что даёт «Экспорт в Excel»). */
+  async exportExcel(
+    session: Session,
+    model: string,
+    body: { fields: string[]; ids: number[] },
+  ): Promise<Buffer> {
+    const res = await this.request(session, 'POST', `/excel/${model}/export`, body);
+    if (!res.ok) throw new Error(`Export ${model} failed: ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /**
    * Скачать содержимое вложения как ArrayBuffer.
    *
    * Используется чтобы проверить, что записанный файл идентичен

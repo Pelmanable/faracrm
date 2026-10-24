@@ -3,11 +3,12 @@
  *
  * Поддерживает:
  *   - Превью существующих файлов через attachmentPreviewUrl(id) (без fetch)
- *   - Превью новых файлов из base64 (после загрузки)
+ *   - Новый файл грузится частями сразу при выборе (useUploadFile), в форму
+ *     идёт его upload_id; превью — из памяти браузера (blob)
  *   - Drag & drop для загрузки/замены файла
  *   - Клик по зоне для выбора файла
  *
- * Данные берёт из useFormContext() — никаких fetch.
+ * Данные берёт из useFormContext().
  *
  * Использование:
  *   <Form model="attachments">
@@ -44,9 +45,12 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { useFormContext } from '@/components/Form/FormContext';
+import { useObjectUrl } from '@/hooks/useObjectUrl';
+import { fileMimetype, useFileUploads } from '@/hooks/useFileUploads';
 import { FileIcon } from './FileIcon';
 import { AttachmentEditorModal } from './AttachmentEditorModal';
 import { AudioPlayer } from './AudioPlayer';
+import { UploadProgress } from './UploadProgress';
 import { canViewAttachment, useAttachmentViewer } from './useAttachmentViewer';
 import { canEditAttachment } from './viewKind';
 import {
@@ -58,14 +62,15 @@ import {
 import {
   attachmentPreviewUrl,
   downloadAttachment,
-  downloadBase64,
+  downloadBlob,
 } from '@/utils/attachmentUrls';
 import classes from './AttachmentPreviewCard.module.css';
 
-const DEFAULT_MAX_SIZE = 100 * 1024 * 1024; // 100 MB
+// Как attachments.max_upload_size по умолчанию; больший сервер отклонит сам
+const DEFAULT_MAX_SIZE = 1024 * 1024 * 1024; // 1 GB
 
 interface AttachmentPreviewCardProps {
-  /** Максимальный размер файла в байтах. По умолчанию 100 MB. */
+  /** Максимальный размер файла в байтах. По умолчанию 1 GB. */
   maxSize?: number;
 }
 
@@ -80,8 +85,16 @@ export function AttachmentPreviewCard({
   const [editorOpen, setEditorOpen] = useState(false);
   const attachmentViewer = useAttachmentViewer();
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Новый файл: в памяти браузера — для превью, на сервер — частями
+  const uploads = useFileUploads();
+  const newFile = uploads.files.file ?? null;
+  const newFileUrl = useObjectUrl(newFile);
+  const progress = uploads.progress.file ?? null;
+  const isUploading = progress !== null;
+  // Поля формы до нового файла — вернуть, если загрузка не удалась
+  const beforeUploadRef = useRef<Record<string, unknown>>({});
 
   const values = form.getValues() || {};
 
@@ -98,48 +111,38 @@ export function AttachmentPreviewCard({
   const isVoice = values.is_voice as boolean | undefined;
   const showPreview = values.show_preview !== false;
   const folder = values.folder;
-  const newFileContent = values.content as string | undefined;
+  // Новый, ещё не сохранённый файл: загрузка частями в форме — upload_id
+  const isNewFile = !!values.upload_id;
 
   const isImage = mimetype ? isImageMimetype(mimetype) : false;
   const isAudio = mimetype ? isAudioMimetype(mimetype) : false;
   const isVideo = mimetype ? isVideoMimetype(mimetype) : false;
 
-  const hasFile = !!(id || newFileContent);
+  const hasFile = !!(id || isNewFile);
   // Правка docx и xlsx во встроенном редакторе — только сохранённого файла
-  const canEdit = !!id && !newFileContent && canEditAttachment(mimetype, name);
+  const canEdit = !!id && !isNewFile && canEditAttachment(mimetype, name);
   // Аудио сохранённого файла играет прямо в превью
-  const canPlayAudio = !!id && !newFileContent && isAudio;
+  const canPlayAudio = !!id && !isNewFile && isAudio;
   // Просмотр без скачивания: сохранённый файл или ещё не сохранённая
-  // картинка (из base64). Docx и xlsx открывает своя кнопка
+  // картинка (из памяти браузера). Docx и xlsx открывает своя кнопка
   // «Редактировать», аудио — плеер в превью.
   const canView =
     !canEdit &&
     !isAudio &&
     canViewAttachment({ mimetype, name }) &&
-    (isImage ? hasFile : !!id && !newFileContent);
+    (isNewFile ? isImage && !!newFile : !!id);
 
   // URL изображения по приоритету
   let imageSrc: string | null = null;
   if (isImage && showPreview) {
-    if (newFileContent) {
-      imageSrc = `data:${mimetype};base64,${newFileContent}`;
+    if (isNewFile) {
+      imageSrc = newFileUrl;
     } else if (id) {
       imageSrc = attachmentPreviewUrl(id, undefined, undefined, checksum);
     }
   }
 
   // ─── File handling ───
-
-  const readFileAsBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Ошибка чтения файла'));
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]); // убираем data:...;base64,
-      };
-      reader.readAsDataURL(file);
-    });
 
   const processFile = async (file: File) => {
     setError(null);
@@ -149,23 +152,29 @@ export function AttachmentPreviewCard({
       return;
     }
 
-    setIsUploading(true);
+    if (!isNewFile) {
+      beforeUploadRef.current = {
+        name: values.name ?? '',
+        mimetype: values.mimetype ?? '',
+        size: values.size ?? 0,
+      };
+    }
     try {
-      const content = await readFileAsBase64(file);
-
-      // Записываем поля в form values — модель Attachment имеет
-      // эти поля на верхнем уровне (не вложенные)
-      form.setValues({
-        name: file.name,
-        mimetype: file.type,
-        size: file.size,
-        content,
-      });
+      // Поля и upload_id — в форму сразу: «Сохранить» до конца загрузки
+      // сервер отклонит (загрузка не завершена), а не создаст вложение без
+      // файла. Модель Attachment имеет эти поля на верхнем уровне.
+      await uploads.start('file', file, uploadId =>
+        form.setValues({
+          name: file.name,
+          mimetype: fileMimetype(file),
+          size: file.size,
+          upload_id: uploadId,
+        }),
+      );
     } catch (err) {
       console.error('Ошибка загрузки файла:', err);
       setError('Ошибка загрузки файла');
-    } finally {
-      setIsUploading(false);
+      form.setValues({ ...beforeUploadRef.current, upload_id: null });
     }
   };
 
@@ -213,11 +222,12 @@ export function AttachmentPreviewCard({
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
+    uploads.forget('file');
     form.setValues({
       name: '',
       mimetype: '',
       size: 0,
-      content: null,
+      upload_id: null,
     });
     setError(null);
   };
@@ -229,16 +239,16 @@ export function AttachmentPreviewCard({
       name,
       mimetype,
       checksum,
-      content: newFileContent,
+      file: isNewFile ? newFile : undefined,
     });
   };
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (id) {
+    if (isNewFile && newFile) {
+      downloadBlob(newFile, name);
+    } else if (id) {
       downloadAttachment(id, name);
-    } else if (newFileContent && mimetype) {
-      downloadBase64(newFileContent, mimetype, name);
     }
   };
 
@@ -328,7 +338,7 @@ export function AttachmentPreviewCard({
         {/* Превью */}
         <Box className={classes.previewArea} onClick={handleZoneClick}>
           {isUploading ? (
-            <Loader size="md" />
+            <UploadProgress value={progress} />
           ) : imageSrc ? (
             <Image
               src={imageSrc}
@@ -342,7 +352,7 @@ export function AttachmentPreviewCard({
           ) : canPlayAudio ? (
             // Клик по плееру не должен открывать выбор файла
             <Box w="100%" maw={400} onClick={e => e.stopPropagation()}>
-              <AudioPlayer attachmentId={Number(id)} mimetype={mimetype} />
+              <AudioPlayer attachmentId={Number(id)} />
             </Box>
           ) : (
             <Box
@@ -396,7 +406,7 @@ export function AttachmentPreviewCard({
                   <IconRefresh size={18} />
                 </ActionIcon>
               </Tooltip>
-              {(id || newFileContent) && (
+              {(isNewFile ? !!newFile : !!id) && (
                 <Tooltip label="Скачать">
                   <ActionIcon
                     variant="light"
@@ -406,7 +416,7 @@ export function AttachmentPreviewCard({
                   </ActionIcon>
                 </Tooltip>
               )}
-              {newFileContent && !id && (
+              {isNewFile && !id && (
                 <Tooltip label="Очистить">
                   <ActionIcon
                     variant="light"

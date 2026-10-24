@@ -97,7 +97,7 @@ The page `/report_template/{id}/design` ("Designer" button on the template form;
 async def sale_invoice_rus(env, record_id: int) -> dict: ...
 ```
 
-- **Preview** — after every edit (debounced) the editor hands over the document, the backend renders it with the selected record or the summary report parameters — the same fields as in the "Generate" dialog (`POST /reports/preview`, DOCX in base64) and the result is shown alongside: DOCX in view mode or PDF.
+- **Preview** — after every edit (debounced) the editor hands over the document, the backend renders it with the selected record or the summary report parameters — the same fields as in the "Generate" dialog (`POST /reports/preview`, the DOCX as the request body, parameters in the query string) and the result is shown alongside: DOCX in view mode or PDF.
 
 Content control wrappers are stripped before rendering (`utils/sdt.py`), so the output document and the PDF carry only the values. Templates are edited by administrators: the `report_template` ACL is read-only for `base_user` and full for `system_admin`; on databases where the module was already installed, tighten the old ACL row by hand: `UPDATE access_list SET perm_create=false, perm_update=false, perm_delete=false WHERE name='base_user_report_template'`.
 

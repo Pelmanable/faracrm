@@ -44,7 +44,13 @@ export function DocxEditorModal({
   const { t } = useTranslation('common');
   const frameRef = useRef<DocxEditorFrameHandle>(null);
   const { bytes, loadError, dirty, markDirty, saving, save, handleClose } =
-    useAttachmentFileEditor({ attachmentId, opened, onClose, onSaved });
+    useAttachmentFileEditor({
+      attachmentId,
+      filename,
+      opened,
+      onClose,
+      onSaved,
+    });
 
   const handleSave = useCallback(
     () => save(() => frameRef.current?.save()),

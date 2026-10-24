@@ -50,13 +50,11 @@ export function ImageControls({
   setRotation: Dispatch<SetStateAction<number>>;
 }) {
   // Абсолютный URL картинки — например, вставить иконку в icons[].src
-  // PWA-манифеста (форма компании). data:-ссылку ещё не сохранённого файла
-  // копируем как есть.
+  // PWA-манифеста (форма компании). blob:-ссылка ещё не сохранённого файла
+  // остаётся как есть.
   const handleCopyUrl = async () => {
     try {
-      const url = src.startsWith('data:')
-        ? src
-        : new URL(src, window.location.origin).toString();
+      const url = new URL(src, window.location.origin).toString();
       await navigator.clipboard.writeText(url);
       notifications.show({ message: 'URL скопирован', color: 'green' });
     } catch {

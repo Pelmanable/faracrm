@@ -1,13 +1,11 @@
 # Copyright 2025 FARA CRM
 # Report DOCX Designer — routes: field catalog and live preview
 
-import base64
-import binascii
+import json
 from typing import TYPE_CHECKING, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from starlette.status import HTTP_400_BAD_REQUEST
 
 from backend.base.crm.auth_token.app import AuthTokenApp
@@ -28,21 +26,19 @@ router_private = APIRouter(
 )
 
 
-class PreviewRequest(BaseModel):
-    """Превью конструктора: несохранённый DOCX из редактора + параметры."""
-
-    template_id: Id
-    content: str  # DOCX в base64
-    params: dict = {}
-    output_format: Literal["docx", "pdf"] | None = None
-
-
 @router_private.post("/reports/preview")
-async def preview_report(req: Request, payload: PreviewRequest):
+async def preview_report(
+    req: Request,
+    template_id: Id,
+    output_format: Literal["docx", "pdf"] | None = None,
+    params: str = Query("{}", description="Report params as JSON object"),
+):
     """
     Рендер переданного DOCX (несохранённая правка из редактора) с данными по
     настройкам шаблона — тот же путь, что у ReportTemplate.render_attachment,
-    но байты берутся из запроса. Файл в base64, как у загрузки вложений.
+    но байты берутся из запроса: тело — сам DOCX (не JSON и не base64),
+    параметры отчёта — JSON в строке запроса. Разовый рендер, а не
+    сохранение файла, поэтому без загрузки частями.
 
     Только администратору отчётов: здесь исполняется присланный клиентом
     шаблон (Jinja в песочнице, но это всё равно чужой код с данными записи).
@@ -52,18 +48,21 @@ async def preview_report(req: Request, payload: PreviewRequest):
     require_template_admin(req)
     env: "Environment" = req.app.state.env
     try:
-        template_bytes = base64.b64decode(payload.content, validate=True)
-    except (binascii.Error, ValueError):
+        report_params = json.loads(params)
+    except ValueError:
+        report_params = None
+    if not isinstance(report_params, dict):
         return JSONResponse(
             status_code=HTTP_400_BAD_REQUEST,
-            content={"error": "content must be base64"},
+            content={"error": "params must be a JSON object"},
         )
+    template_bytes = await req.body()
 
     templates = env.models.report_template
     try:
-        tmpl = await templates.get_template(payload.template_id)
+        tmpl = await templates.get_template(template_id)
         report = await templates.render_bytes(
-            tmpl, template_bytes, payload.params, payload.output_format
+            tmpl, template_bytes, report_params, output_format
         )
     except Exception as e:
         return error_response(e)

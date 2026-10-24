@@ -23,8 +23,8 @@ export interface ViewableAttachment {
   name?: string | null;
   mimetype?: string | null;
   checksum?: string | null;
-  /** base64 ещё не сохранённого файла (картинка в поле ввода чата, в форме) */
-  content?: string | null;
+  /** Ещё не сохранённый файл — из памяти браузера (поле ввода чата, форма) */
+  file?: Blob | null;
 }
 
 /** Есть ли у файла просмотр без скачивания. */

@@ -124,13 +124,14 @@ export function openAttachmentAsPdf(
   );
 }
 
-/** Скачать ещё не загруженный файл прямо из base64-контента. */
-export function downloadBase64(
-  content: string,
-  mimetype: string,
-  filename?: string,
-): void {
-  triggerDownload(`data:${mimetype};base64,${content}`, filename);
+/**
+ * Скачать ещё не сохранённый файл прямо из памяти браузера. Ссылка blob:
+ * отзывается после клика — скачивание уже началось.
+ */
+export function downloadBlob(blob: Blob, filename?: string): void {
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, filename);
+  URL.revokeObjectURL(url);
 }
 
 // ============================================================

@@ -38,7 +38,7 @@ import { useTranslation } from 'react-i18next';
 import { useReadQuery, useUpdateMutation } from '@/services/api/crudApi';
 import { selectCurrentSession } from '@/slices/authSlice';
 import { attachmentContentUrl, triggerDownload } from '@/utils/attachmentUrls';
-import { arrayBufferToBase64 } from '@/utils/base64';
+import { useUploadFile } from '@/hooks/useUploadFile';
 import type { DocxEditorFrameHandle } from '@/components/Attachment/DocxEditorFrame';
 import type { ReportParamValues } from '@/fara_report_docx/api';
 import { fetchReportPreview, useTemplateFieldsQuery } from './api';
@@ -98,6 +98,7 @@ export default function DesignerPage() {
   const { data: catalogData } = useTemplateFieldsQuery(templateId);
   const catalog: ReportFieldNode[] = catalogData?.data || [];
   const [update] = useUpdateMutation();
+  const uploadFile = useUploadFile();
 
   // --- документ в редакторе ---
   const frameRef = useRef<DocxEditorFrameHandle>(null);
@@ -166,7 +167,7 @@ export default function DesignerPage() {
       }
       const { blob, filename } = await fetchReportPreview(token, {
         templateId,
-        content: await arrayBufferToBase64(buffer),
+        document: buffer,
         params,
         outputFormat: format,
       });
@@ -275,12 +276,17 @@ export default function DesignerPage() {
     if (!buffer) return;
     setSaving(true);
     try {
-      const content = await arrayBufferToBase64(buffer);
+      // Файл — загрузкой частями, во вложение — его upload_id
+      const name = `${template.name || 'template'}.docx`;
+      const uploadId = await uploadFile(new Blob([buffer]), {
+        name,
+        mimetype: DOCX_MIMETYPE,
+      });
       if (fileId) {
         await update({
           model: 'attachments',
           id: fileId,
-          values: { content, size: buffer.byteLength },
+          values: { upload_id: uploadId },
         }).unwrap();
       } else {
         // Шаблон без файла: создаём вложение через полиморфное поле формы
@@ -289,12 +295,12 @@ export default function DesignerPage() {
           id: templateId,
           values: {
             template_file: {
-              name: `${template.name || 'template'}.docx`,
+              name,
               mimetype: DOCX_MIMETYPE,
               size: buffer.byteLength,
               res_model: 'report_template',
               res_id: templateId,
-              content,
+              upload_id: uploadId,
             },
           },
         }).unwrap();
@@ -313,7 +319,7 @@ export default function DesignerPage() {
     } finally {
       setSaving(false);
     }
-  }, [template, fileId, templateId, update, t]);
+  }, [template, fileId, templateId, update, uploadFile, t]);
 
   const handleBack = useCallback(() => {
     if (dirty && !window.confirm(t('reportsDesign:designer.unsaved'))) return;

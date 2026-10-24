@@ -1,10 +1,4 @@
-import {
-  useRef,
-  useState,
-  useContext,
-  DragEvent,
-  ChangeEvent,
-} from 'react';
+import { useRef, useState, useContext, DragEvent, ChangeEvent } from 'react';
 import {
   Box,
   Text,
@@ -23,7 +17,8 @@ import {
   useAttachmentViewer,
 } from '@/components/Attachment';
 import classes from './FieldPolymorphicOne2many.module.css';
-import { downloadAttachment, downloadBase64 } from '@/utils/attachmentUrls';
+import { downloadAttachment, downloadBlob } from '@/utils/attachmentUrls';
+import { fileMimetype, useFileUploads } from '@/hooks/useFileUploads';
 import { useTranslation } from 'react-i18next';
 
 interface AttachmentFile {
@@ -31,7 +26,7 @@ interface AttachmentFile {
   name: string;
   mimetype: string;
   size: number;
-  content?: string; // base64 для новых файлов
+  upload_id?: number; // новый файл, загруженный частями
   res_model?: string;
   res_id?: number | null;
   _isNew?: boolean; // маркер нового файла
@@ -55,7 +50,7 @@ export const FieldPolymorphicOne2many = ({
   model,
   label,
   accept,
-  maxSize = 10 * 1024 * 1024, // 10MB по умолчанию
+  maxSize = 1024 * 1024 * 1024, // как attachments.max_upload_size
   maxFiles = 50,
   showPreview = true,
   previewSize = 100,
@@ -68,8 +63,11 @@ export const FieldPolymorphicOne2many = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const { fields: fieldsServer } = useContext(FormFieldsContext);
 
-  // Состояния
-  const [isUploading, setIsUploading] = useState(false);
+  // Новые файлы грузятся на сервер частями сразу при выборе; в created —
+  // их upload_id. Сами файлы (превью, скачать) и проценты загрузки — по
+  // _localId строки
+  const uploads = useFileUploads();
+  const isUploading = Object.keys(uploads.progress).length > 0;
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,21 +108,46 @@ export const FieldPolymorphicOne2many = ({
   );
   const allFiles = [...visibleExistingFiles, ...newFiles];
 
-  // Чтение файла в base64
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Ошибка чтения файла'));
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]);
-      };
-      reader.readAsDataURL(file);
+  // Новые файлы поля (created) — значения читаются из формы в момент
+  // вызова: загрузки завершаются в разное время
+  const setCreated = (created: AttachmentFile[]) =>
+    form.setValues({
+      ['_' + name]: {
+        deleted: getDeletedIds(),
+        created,
+        fieldsServer: fieldsServer,
+      },
     });
+
+  const uploadNewFile = async (file: File) => {
+    const localId = `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+      // Строка в created сразу: «Сохранить» до конца загрузки сервер
+      // отклонит (загрузка не завершена), а не сохранит без файла
+      await uploads.start(localId, file, uploadId =>
+        setCreated([
+          ...getNewFiles(),
+          {
+            name: file.name,
+            mimetype: fileMimetype(file),
+            size: file.size,
+            res_model: model,
+            res_id: id ? Number(id) : null,
+            upload_id: uploadId,
+            _isNew: true,
+            _localId: localId,
+          },
+        ]),
+      );
+    } catch (err) {
+      console.error('Ошибка загрузки файла:', err);
+      setError('Ошибка загрузки файлов');
+      setCreated(getNewFiles().filter(f => f._localId !== localId));
+    }
   };
 
   // Обработка файлов
-  const processFiles = async (files: FileList | File[]) => {
+  const processFiles = (files: FileList | File[]) => {
     setError(null);
     const fileArray = Array.from(files);
 
@@ -141,40 +164,7 @@ export const FieldPolymorphicOne2many = ({
       return;
     }
 
-    setIsUploading(true);
-
-    try {
-      const newFilesData: AttachmentFile[] = [];
-
-      for (const file of fileArray) {
-        const content = await readFileAsBase64(file);
-        newFilesData.push({
-          name: file.name,
-          mimetype: file.type,
-          size: file.size,
-          res_model: model,
-          res_id: id ? Number(id) : null,
-          content: content,
-          _isNew: true,
-          _localId: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        });
-      }
-
-      // Добавляем к существующим новым файлам
-      const currentNew = getNewFiles();
-      form.setValues({
-        ['_' + name]: {
-          deleted: deletedIds,
-          created: [...currentNew, ...newFilesData],
-          fieldsServer: fieldsServer,
-        },
-      });
-    } catch (err) {
-      console.error('Ошибка загрузки файлов:', err);
-      setError('Ошибка загрузки файлов');
-    } finally {
-      setIsUploading(false);
-    }
+    fileArray.forEach(uploadNewFile);
   };
 
   // Обработка выбора файлов через input
@@ -218,19 +208,11 @@ export const FieldPolymorphicOne2many = ({
   };
 
   // Удаление файла
-  const handleDelete = (file: AttachmentFile, index: number) => {
-    if (file._isNew) {
-      // Удаляем из новых
-      const currentNew = getNewFiles();
-      const newIndex = index - visibleExistingFiles.length;
-      const newCreated = currentNew.filter((_, i) => i !== newIndex);
-      form.setValues({
-        ['_' + name]: {
-          deleted: deletedIds,
-          created: newCreated,
-          fieldsServer: fieldsServer,
-        },
-      });
+  const handleDelete = (file: AttachmentFile) => {
+    if (file._isNew && file._localId) {
+      // Удаляем из новых; ещё грузится — отменяем загрузку
+      uploads.forget(file._localId);
+      setCreated(getNewFiles().filter(f => f._localId !== file._localId));
     } else if (file.id) {
       // Добавляем в deleted
       form.setValues({
@@ -243,23 +225,28 @@ export const FieldPolymorphicOne2many = ({
     }
   };
 
+  // Ещё не сохранённый файл строки — из памяти браузера
+  const localFile = (file: AttachmentFile) =>
+    file._isNew && file._localId ? uploads.files[file._localId] : undefined;
+
   // Скачивание файла
   const handleDownload = (file: AttachmentFile) => {
+    const local = localFile(file);
     if (file.id && !file._isNew) {
       downloadAttachment(file.id, file.name);
-    } else if (file.content) {
-      downloadBase64(file.content, file.mimetype, file.name);
+    } else if (local) {
+      downloadBlob(local, file.name);
     }
   };
 
-  // Картинки — со стрелками по картинкам поля (новые — из base64);
-  // остальные файлы AttachmentPreview открывает сам
+  // Картинки — со стрелками по картинкам поля (новые — из памяти
+  // браузера); остальные файлы AttachmentPreview открывает сам
   const handleViewImage = (index: number) => {
     const items = allFiles.map(f => ({
       id: f.id,
       name: f.name,
       mimetype: f.mimetype,
-      content: f.content,
+      file: localFile(f),
     }));
     attachmentViewer.open(
       items[index],
@@ -298,9 +285,12 @@ export const FieldPolymorphicOne2many = ({
                 name: file.name,
                 mimetype: file.mimetype,
                 size: file.size,
-                content: file.content,
+                file: localFile(file),
               }}
-              onDelete={() => handleDelete(file, index)}
+              progress={
+                file._localId ? (uploads.progress[file._localId] ?? null) : null
+              }
+              onDelete={() => handleDelete(file)}
               onDownload={() => handleDownload(file)}
               onClick={
                 isImageMimetype(file.mimetype)

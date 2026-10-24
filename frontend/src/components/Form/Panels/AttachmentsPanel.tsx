@@ -13,6 +13,9 @@ import {
   useAttachmentViewer,
 } from '@/components/Attachment';
 import type { ViewableAttachment } from '@/components/Attachment';
+import { UploadProgress } from '@/components/Attachment/UploadProgress';
+import { useUploadFile } from '@/hooks/useUploadFile';
+import { fileMimetype } from '@/hooks/useFileUploads';
 import { downloadAttachment } from '@/utils/attachmentUrls';
 
 const PAGE_SIZE = 80;
@@ -52,8 +55,11 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
     limit,
   });
 
-  const [createAttachment, { isLoading: isUploading }] = useCreateMutation();
+  const [createAttachment, { isLoading: isCreating }] = useCreateMutation();
   const [deleteAttachment] = useDeleteBulkMutation();
+  const uploadFile = useUploadFile();
+  // Процент загрузки текущего файла; null — не грузится
+  const [progress, setProgress] = useState<number | null>(null);
 
   const attachments = attachmentsData?.data || [];
   const total = attachmentsData?.total || 0;
@@ -70,19 +76,25 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    // Файл частями на сервер, затем вложение записи с его upload_id
     for (const file of Array.from(files)) {
-      const base64 = await fileToBase64(file);
-
+      const mimetype = fileMimetype(file);
+      setProgress(0);
       try {
+        const uploadId = await uploadFile(file, {
+          name: file.name,
+          mimetype,
+          onProgress: (loaded, total) => setProgress((loaded / total) * 100),
+        });
         await createAttachment({
           model: 'attachments',
           values: {
             name: file.name,
             res_model: resModel,
             res_id: resId,
-            mimetype: file.type || 'application/octet-stream',
+            mimetype,
             size: file.size,
-            content: base64,
+            upload_id: uploadId,
             folder: false,
             public: false,
           },
@@ -91,6 +103,7 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
         console.error('Failed to upload attachment:', error);
       }
     }
+    setProgress(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -140,10 +153,11 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
         size="compact-sm"
         leftSection={<IconUpload size={14} />}
         onClick={() => fileInputRef.current?.click()}
-        loading={isUploading}
+        loading={progress !== null || isCreating}
         fullWidth>
         {t('common:upload', 'Загрузить файл')}
       </Button>
+      {progress !== null && <UploadProgress value={progress} />}
 
       {/* Attachment list with AttachmentPreview */}
       {attachments.length === 0 && (
@@ -190,19 +204,4 @@ export function AttachmentsPanel({ resModel, resId }: AttachmentsPanelProps) {
       {attachmentViewer.modal}
     </Stack>
   );
-}
-
-// ─── Helpers ──────────────────────────────────────────────────
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }

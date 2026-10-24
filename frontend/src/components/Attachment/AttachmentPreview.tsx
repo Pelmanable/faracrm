@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
+  Center,
   Image,
   Text,
   ActionIcon,
   Group,
   Tooltip,
   Paper,
+  Progress,
+  RingProgress,
   Stack,
   Loader,
 } from '@mantine/core';
@@ -26,6 +29,7 @@ import { canViewAttachment, useAttachmentViewer } from './useAttachmentViewer';
 import { canEditAttachment } from './viewKind';
 import { isImageMimetype, isAudioMimetype, formatFileSize } from './fileIcons';
 import { attachmentPreviewUrl } from '@/utils/attachmentUrls';
+import { useObjectUrl } from '@/hooks/useObjectUrl';
 import classes from './AttachmentPreview.module.css';
 
 export interface AttachmentData {
@@ -34,7 +38,8 @@ export interface AttachmentData {
   mimetype?: string | null;
   size?: number | null;
   checksum?: string | null;
-  content?: string | null;
+  /** Ещё не сохранённый файл — превью из памяти браузера */
+  file?: Blob | null;
   storage_file_url?: string | null;
   is_voice?: boolean;
 }
@@ -46,6 +51,8 @@ interface AttachmentPreviewProps {
   onDownload?: () => void;
   onClick?: () => void;
   isLoading?: boolean;
+  /** Процент загрузки файла на сервер — поверх превью; null — не грузится */
+  progress?: number | null;
   showActions?: boolean;
   showPreview?: boolean;
   previewSize?: number;
@@ -68,11 +75,14 @@ export function AttachmentPreview({
   onDownload,
   onClick,
   isLoading = false,
+  progress = null,
   showActions = true,
   showPreview = true,
   previewSize = 120,
   compact = false,
 }: AttachmentPreviewProps) {
+  const fileUrl = useObjectUrl(attachment.file);
+
   // Превью (маленькая картинка в карточке)
   const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
   const [thumbnailError, setThumbnailError] = useState(false);
@@ -118,17 +128,9 @@ export function AttachmentPreview({
 
     if (!isImage || isAudio) return;
 
-    // base64 из формы (новый файл)
-    if (attachment.content) {
-      const src = `data:${attachment.mimetype};base64,${attachment.content}`;
-      setThumbnailSrc(src);
-      loadedForIdRef.current = attachId ?? null;
-      return;
-    }
-
-    // data URL из storage
-    if (attachment.storage_file_url?.startsWith('data:')) {
-      setThumbnailSrc(attachment.storage_file_url);
+    // Ещё не сохранённый файл — из памяти браузера
+    if (fileUrl) {
+      setThumbnailSrc(fileUrl);
       loadedForIdRef.current = attachId ?? null;
       return;
     }
@@ -148,9 +150,8 @@ export function AttachmentPreview({
     }
   }, [
     attachment.id,
-    attachment.content,
+    fileUrl,
     attachment.checksum,
-    attachment.storage_file_url,
     attachment.mimetype,
     isImage,
     isAudio,
@@ -170,11 +171,11 @@ export function AttachmentPreview({
   }, [attachment.id]);
 
   // Просмотр без скачивания (клик по превью): сохранённый файл или ещё не
-  // сохранённая картинка (из base64). Битую картинку не открываем.
+  // сохранённая картинка (из памяти браузера). Битую картинку не открываем.
   const canView =
     !thumbnailError &&
     canViewAttachment(attachment) &&
-    (!!savedId || (isImage && !!attachment.content));
+    (!!savedId || (isImage && !!attachment.file));
 
   // --- Клик: окно просмотра, иначе скачивание ---
   const handleClick = useCallback(() => {
@@ -190,7 +191,7 @@ export function AttachmentPreview({
         name: attachment.name,
         mimetype: attachment.mimetype,
         checksum: attachment.checksum,
-        content: attachment.content,
+        file: attachment.file,
       });
       return;
     }
@@ -204,11 +205,23 @@ export function AttachmentPreview({
     attachment.name,
     attachment.mimetype,
     attachment.checksum,
-    attachment.content,
+    attachment.file,
     onDownload,
   ]);
 
   const isLoadingAny = isLoadingThumbnail;
+
+  // Файл ещё грузится на сервер — кольцо поверх превью
+  const progressOverlay = progress !== null && (
+    <Center className={classes.progressOverlay}>
+      <RingProgress
+        size={Math.min(previewSize * 0.6, 48)}
+        thickness={3}
+        roundCaps
+        sections={[{ value: progress, color: 'blue' }]}
+      />
+    </Center>
+  );
 
   // --- Compact mode ---
   if (compact) {
@@ -243,6 +256,7 @@ export function AttachmentPreview({
             </Text>
           </Box>
         )}
+        {progressOverlay}
         {onDelete && (
           <ActionIcon
             className={classes.compactDeleteBtn}
@@ -275,8 +289,7 @@ export function AttachmentPreview({
               attachmentId={
                 typeof attachment.id === 'number' ? attachment.id : undefined
               }
-              content={attachment.content || undefined}
-              mimetype={attachment.mimetype || 'audio/webm'}
+              src={fileUrl ?? undefined}
               isVoice={attachment.is_voice || false}
               compact
             />
@@ -285,6 +298,7 @@ export function AttachmentPreview({
                 {attachment.name || 'Audio'}
               </Text>
             )}
+            {progress !== null && <Progress value={progress} size="xs" />}
           </Stack>
         </Paper>
       ) : (
@@ -331,6 +345,7 @@ export function AttachmentPreview({
                 />
               </Box>
             )}
+            {progressOverlay}
           </Box>
 
           <Stack gap={4} className={classes.info}>

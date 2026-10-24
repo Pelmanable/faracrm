@@ -117,6 +117,7 @@
   "recordVoice": "Записать голосовое сообщение",
   "stopRecording": "Остановить запись",
   "attachedFiles": "Прикреплено: {{count}}",
+  "uploadFailed": "Не удалось загрузить файл {{name}}",
   "clearAll": "Очистить всё",
   "all": "Все",
   "internal": "Внутренние",

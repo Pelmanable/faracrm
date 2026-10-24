@@ -62,26 +62,28 @@ export interface ExcelImportResult {
   errors: ExcelImportError[];
 }
 
+// Файл — загрузкой частями (useUploadFile): разбор и импорт читают его по
+// одному upload_id
 const excelApi = crudApi.injectEndpoints({
   endpoints: build => ({
     excelPreview: build.mutation<
       ExcelPreview,
-      { model: string; content: string }
+      { model: string; upload_id: number }
     >({
-      query: ({ model, content }) => ({
+      query: ({ model, upload_id }) => ({
         url: `/excel/${model}/preview`,
         method: 'POST',
-        body: { content },
+        body: { upload_id },
       }),
     }),
     excelImport: build.mutation<
       ExcelImportResult,
-      { model: string; content: string; mapping: Record<number, string> }
+      { model: string; upload_id: number; mapping: Record<number, string> }
     >({
-      query: ({ model, content, mapping }) => ({
+      query: ({ model, upload_id, mapping }) => ({
         url: `/excel/${model}/import`,
         method: 'POST',
-        body: { content, mapping },
+        body: { upload_id, mapping },
       }),
       // Появились записи — список модели перечитать.
       invalidatesTags: (_result, _error, { model }) => [
@@ -92,16 +94,6 @@ const excelApi = crudApi.injectEndpoints({
 });
 
 export const { useExcelPreviewMutation, useExcelImportMutation } = excelApi;
-
-/** Файл → base64 без префикса data: — в JSON-тело, как у вложений. */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 /**
  * Скачать экспорт. Ответ — файл, поэтому обычный fetch с токеном сессии

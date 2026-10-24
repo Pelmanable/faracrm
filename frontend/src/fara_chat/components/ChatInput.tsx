@@ -19,18 +19,22 @@ import {
   IconFile,
   IconX,
 } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
 import {
   useSendMessageMutation,
   useGetChatEmailSubjectQuery,
 } from '@/services/api/chat';
+import type { SendMessageAttachment } from '@/services/api/chat';
 import {
   AttachmentPreview,
   VoiceRecorder,
   isImageMimetype,
-  formatFileSize,
   useAttachmentViewer,
 } from '@/components/Attachment';
+import type { RecordedVoice } from '@/components/Attachment';
+import { useUploadFile } from '@/hooks/useUploadFile';
+import { fileMimetype, useFileUploads } from '@/hooks/useFileUploads';
 import { EmojiPicker } from './EmojiPicker';
 import { ConnectorSwitcher, ConnectorOption } from './ConnectorSwitcher';
 import { EmailRichInput } from './EmailRichInput';
@@ -43,11 +47,12 @@ function htmlToPlainText(html: string): string {
   return div.textContent || div.innerText || '';
 }
 
+// Файл грузится на сервер частями сразу при выборе; в сообщение уходит его
+// upload_id, превью — из памяти браузера, процент — в useFileUploads
 interface AttachmentFile {
-  name: string;
-  mimetype: string;
-  size: number;
-  content: string;
+  file: File;
+  /** Есть — загружен */
+  uploadId?: number;
   _localId: string;
 }
 
@@ -72,7 +77,6 @@ interface ChatInputProps {
   taskId?: number | null;
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILES = 10;
 
 export function ChatInput({
@@ -103,19 +107,15 @@ export function ChatInput({
   const [, setIsRecording] = useState(false);
 
   const [sendMessage] = useSendMessageMutation();
+  const uploadFile = useUploadFile();
+  const uploads = useFileUploads();
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<() => void>(null);
   const fileInputRef = useRef<() => void>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Голосовое сообщение готово к отправке
-  const [pendingVoice, setPendingVoice] = useState<{
-    name: string;
-    mimetype: string;
-    size: number;
-    content: string;
-    is_voice: boolean;
-  } | null>(null);
+  const [pendingVoice, setPendingVoice] = useState<RecordedVoice | null>(null);
 
   // Счётчик для сброса VoiceRecorder после отправки
   const [voiceResetKey, setVoiceResetKey] = useState(0);
@@ -149,6 +149,23 @@ export function ChatInput({
   const hasText = isEmail
     ? htmlToPlainText(message).trim().length > 0
     : message.trim().length > 0;
+  // Отправка ждёт, пока все файлы загрузятся
+  const uploading = attachments.some(a => a.uploadId === undefined);
+
+  // Запись — на сервер частями, в сообщение — её upload_id
+  const uploadVoice = useCallback(
+    async (voice: RecordedVoice): Promise<SendMessageAttachment> => ({
+      name: voice.name,
+      mimetype: voice.mimetype,
+      size: voice.size,
+      is_voice: voice.is_voice,
+      upload_id: await uploadFile(voice.file, {
+        name: voice.name,
+        mimetype: voice.mimetype,
+      }),
+    }),
+    [uploadFile],
+  );
 
   const handleSend = useCallback(async () => {
     // Для письма тело — HTML; иначе обычный текст.
@@ -166,7 +183,7 @@ export function ChatInput({
           task_id: taskId,
           currentUserId,
           currentUserName,
-          attachments: [pendingVoice],
+          attachments: [await uploadVoice(pendingVoice)],
         }).unwrap();
         setPendingVoice(null);
         setIsRecording(false);
@@ -179,7 +196,7 @@ export function ChatInput({
     }
 
     // Обычное сообщение / письмо
-    if ((!plain && attachments.length === 0) || disabled) return;
+    if ((!plain && attachments.length === 0) || disabled || uploading) return;
 
     // Для email тело — «email-формат» {subject, html} (тема едет внутри body,
     // как system хранит JSON). Для остального — обычный plain-текст.
@@ -197,17 +214,18 @@ export function ChatInput({
         currentUserName,
         attachments:
           attachments.length > 0
-            ? attachments.map(({ name, mimetype, size, content }) => ({
-                name,
-                mimetype,
-                size,
-                content,
+            ? attachments.map(({ file, uploadId }) => ({
+                name: file.name,
+                mimetype: fileMimetype(file),
+                size: file.size,
+                upload_id: uploadId!,
               }))
             : undefined,
       }).unwrap();
 
       setMessage('');
       setComposerKey(k => k + 1); // очистить rich-редактор письма
+      attachments.forEach(a => uploads.forget(a._localId));
       setAttachments([]);
       inputRef.current?.focus();
       onMessageSent?.();
@@ -218,7 +236,10 @@ export function ChatInput({
     message,
     isEmail,
     attachments,
+    uploading,
     pendingVoice,
+    uploadVoice,
+    uploads.forget,
     chatId,
     connectorId,
     currentUserId,
@@ -257,19 +278,24 @@ export function ChatInput({
     inputRef.current?.focus();
   };
 
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]);
-      };
-      reader.readAsDataURL(file);
-    });
+  const startUpload = async ({ file, _localId }: AttachmentFile) => {
+    try {
+      const uploadId = await uploads.start(_localId, file);
+      if (uploadId === null) return;
+      setAttachments(prev =>
+        prev.map(a => (a._localId === _localId ? { ...a, uploadId } : a)),
+      );
+    } catch (error) {
+      console.error('Failed to upload file:', error);
+      notifications.show({
+        color: 'red',
+        message: t('uploadFailed', { name: file.name }),
+      });
+      setAttachments(prev => prev.filter(a => a._localId !== _localId));
+    }
   };
 
-  const handleFileSelect = async (files: File[] | null) => {
+  const handleFileSelect = (files: File[] | null) => {
     if (!files || files.length === 0) return;
 
     if (attachments.length + files.length > MAX_FILES) {
@@ -277,46 +303,20 @@ export function ChatInput({
       return;
     }
 
-    const newAttachments: AttachmentFile[] = [];
-
-    for (const file of files) {
-      if (file.size > MAX_FILE_SIZE) {
-        console.warn(
-          `File ${file.name} exceeds ${formatFileSize(MAX_FILE_SIZE)}`,
-        );
-        continue;
-      }
-
-      try {
-        const content = await readFileAsBase64(file);
-        newAttachments.push({
-          name: file.name,
-          mimetype: file.type || 'application/octet-stream',
-          size: file.size,
-          content,
-          _localId: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        });
-      } catch (err) {
-        console.error('Error reading file:', err);
-      }
-    }
-
-    if (newAttachments.length > 0) {
-      setAttachments(prev => [...prev, ...newAttachments]);
-    }
+    const added: AttachmentFile[] = files.map(file => ({
+      file,
+      _localId: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    }));
+    setAttachments(prev => [...prev, ...added]);
+    added.forEach(startUpload);
   };
 
   const handleRemoveAttachment = (localId: string) => {
+    uploads.forget(localId);
     setAttachments(prev => prev.filter(a => a._localId !== localId));
   };
 
-  const handleVoiceRecorded = async (voiceFile: {
-    name: string;
-    mimetype: string;
-    size: number;
-    content: string;
-    is_voice: boolean;
-  }) => {
+  const handleVoiceRecorded = async (voice: RecordedVoice) => {
     // Отправляем голосовое сообщение сразу
     try {
       await sendMessage({
@@ -326,7 +326,7 @@ export function ChatInput({
         connector_type: selectedConnectorType,
         currentUserId,
         currentUserName,
-        attachments: [voiceFile],
+        attachments: [await uploadVoice(voice)],
       }).unwrap();
       setIsRecording(false);
     } catch (error) {
@@ -334,13 +334,13 @@ export function ChatInput({
     }
   };
 
-  // Ещё не отправленные картинки — из base64, со стрелками по соседним
-  // картинкам (остальные файлы без id окну показать нечем)
+  // Ещё не отправленные картинки — из памяти браузера, со стрелками по
+  // соседним картинкам (остальные файлы без id окну показать нечем)
   const handleViewAttachment = (index: number) => {
-    const items = attachments.map(a => ({
-      name: a.name,
-      mimetype: a.mimetype,
-      content: a.content,
+    const items = attachments.map(({ file }) => ({
+      name: file.name,
+      mimetype: fileMimetype(file),
+      file,
     }));
     attachmentViewer.open(
       items[index],
@@ -351,10 +351,13 @@ export function ChatInput({
   const canAddMore = attachments.length < MAX_FILES;
 
   const handleClearAllAttachments = () => {
+    attachments.forEach(a => uploads.forget(a._localId));
     setAttachments([]);
   };
 
-  const canSend = hasText || attachments.length > 0 || !!pendingVoice;
+  const hasContent = hasText || attachments.length > 0 || !!pendingVoice;
+  // Пока файлы грузятся, кнопка видна, но неактивна
+  const canSend = hasContent && !uploading;
 
   // Кнопки, общие для письма и обычного сообщения.
   const attachMenu = (
@@ -428,18 +431,19 @@ export function ChatInput({
             </ActionIcon>
           </Group>
           <SimpleGrid cols={6} spacing="xs">
-            {attachments.map((file, index) => (
+            {attachments.map(({ file, _localId }, index) => (
               <AttachmentPreview
-                key={file._localId}
+                key={_localId}
                 attachment={{
                   name: file.name,
-                  mimetype: file.mimetype,
+                  mimetype: fileMimetype(file),
                   size: file.size,
-                  content: file.content,
+                  file,
                 }}
-                onDelete={() => handleRemoveAttachment(file._localId)}
+                progress={uploads.progress[_localId] ?? null}
+                onDelete={() => handleRemoveAttachment(_localId)}
                 onClick={
-                  isImageMimetype(file.mimetype)
+                  isImageMimetype(fileMimetype(file))
                     ? () => handleViewAttachment(index)
                     : undefined
                 }
@@ -553,7 +557,7 @@ export function ChatInput({
               showSendButton={false}
             />
           )}
-          {canSend && sendButton}
+          {hasContent && sendButton}
         </Group>
       )}
 

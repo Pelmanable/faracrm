@@ -96,6 +96,30 @@ attachments = await Attachment.search(
 
 This is cheaper than having an FK on each table. Downside — no cascade on deletion (see below).
 
+`content` (bytes) is for server code: incoming messenger files, call recordings, reports. `content` in an API request (the old base64 format) is a 400 `CONTENT_NOT_SUPPORTED` error pointing to `upload_id`.
+
+## Chunked upload
+
+A file from the browser or an external system (up to `attachments.max_upload_size`, 1 GB by default) is sent in 8 MB parts, in order: every request is small, so nginx limits do not get in the way, and a dropped connection resumes.
+
+```
+POST   /attachments/uploads        {name, mimetype, size} → {id, part_size, offset: 0}
+PATCH  /attachments/uploads/{id}   header Upload-Offset: N, body — the part bytes → {offset}
+                                   409 {offset} — the server expects a part at another offset
+GET    /attachments/uploads/{id}   → {offset, size}       — to resume
+DELETE /attachments/uploads/{id}   — cancel
+```
+
+A finished upload is passed instead of the content as `upload_id`:
+
+- `POST /auto/attachments`, `PUT /auto/attachments/{id}`, record attachment fields;
+- sending a chat message — `attachments: [{name, mimetype, size, upload_id, is_voice}]`;
+- Excel import — `{upload_id}` in `/excel/{model}/preview` and `/excel/{model}/import`.
+
+The upload is only a transport: the attachment's `create` / `create_bulk` / `update` first call `AttachmentUpload.fill`, which reads the assembled file (`<filestore>/.uploads/<id>`) into `content`, and after the write `AttachmentUpload.release` removes the upload. The rest works as before — storage strategies get bytes. An upload belongs to the user who started it; abandoned ones (a day without new parts) are removed by the cron job "Вложения: удалить старые загрузки частями". Saving before the upload is finished returns 400 `UPLOAD_NOT_COMPLETE`, an expired or foreign upload — 400 `UPLOAD_NOT_FOUND`.
+
+On the frontend — the `useUploadFile` hook (`frontend/src/hooks`): `uploadFile(file, {name, mimetype, onStart, onProgress, signal}) → upload_id`. While an upload is running, the browser asks before closing the tab.
+
 ## What's next
 
 - [Local storage](filestore.md) — `FileStoreStrategy`, simple disk write

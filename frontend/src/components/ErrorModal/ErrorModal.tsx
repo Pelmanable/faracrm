@@ -85,6 +85,15 @@ const TRANSLATIONS: Record<
       title: 'Пустое сообщение',
       description: 'Введите текст сообщения или прикрепите файл.',
     },
+    UPLOAD_NOT_COMPLETE: {
+      title: 'Файл ещё загружается',
+      description: 'Дождитесь окончания загрузки файла и повторите.',
+    },
+    UPLOAD_NOT_FOUND: {
+      title: 'Загрузка файла устарела',
+      description:
+        'Файл не сохранён больше суток после загрузки или загрузка отменена. Выберите файл заново.',
+    },
     USER_LOGIN_EXISTS: {
       title: 'Логин уже занят',
       description:
@@ -214,6 +223,15 @@ const TRANSLATIONS: Record<
     EMPTY_MESSAGE: {
       title: 'Empty Message',
       description: 'Please enter a message or attach a file.',
+    },
+    UPLOAD_NOT_COMPLETE: {
+      title: 'File is still uploading',
+      description: 'Wait for the file upload to finish and try again.',
+    },
+    UPLOAD_NOT_FOUND: {
+      title: 'File upload expired',
+      description:
+        'The file was not saved within a day after upload, or the upload was cancelled. Choose the file again.',
     },
     USER_LOGIN_EXISTS: {
       title: 'Login already taken',

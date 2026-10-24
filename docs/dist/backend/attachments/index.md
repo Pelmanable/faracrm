@@ -96,6 +96,30 @@ attachments = await Attachment.search(
 
 Это дешевле, чем заводить FK на каждую таблицу. Минус — нет cascade при удалении (см. ниже).
 
+`content` (байты) — для кода сервера: входящие файлы мессенджеров, записи звонков, отчёты. В запросе API `content` (старый формат, base64) — ошибка 400 `CONTENT_NOT_SUPPORTED` с подсказкой про `upload_id`.
+
+## Загрузка файла частями
+
+Файл из браузера или внешней системы (до `attachments.max_upload_size`, по умолчанию 1 ГБ) уходит на сервер частями по 8 МБ, по порядку: каждый запрос маленький — лимиты nginx не мешают, обрыв сети докачивается.
+
+```
+POST   /attachments/uploads        {name, mimetype, size} → {id, part_size, offset: 0}
+PATCH  /attachments/uploads/{id}   заголовок Upload-Offset: N, тело — байты части → {offset}
+                                   409 {offset} — сервер ждёт часть с другой позиции
+GET    /attachments/uploads/{id}   → {offset, size}       — для докачки
+DELETE /attachments/uploads/{id}   — отмена
+```
+
+Готовая загрузка передаётся вместо содержимого — `upload_id`:
+
+- `POST /auto/attachments`, `PUT /auto/attachments/{id}`, поля-вложения записи;
+- отправка сообщения чата — `attachments: [{name, mimetype, size, upload_id, is_voice}]`;
+- импорт Excel — `{upload_id}` в `/excel/{model}/preview` и `/excel/{model}/import`.
+
+Загрузка — только транспорт: `create` / `create_bulk` / `update` вложения в начале вызывают `AttachmentUpload.fill` — собранный файл (`<filestore>/.uploads/<id>`) читается в `content`, — а после записи `AttachmentUpload.release` удаляет загрузку. Дальше всё как раньше — стратегии хранилищ получают байты. Загрузка принадлежит создавшему её пользователю; брошенные (сутки без новых частей) удаляет cron «Вложения: удалить старые загрузки частями». Сохранение до конца загрузки — 400 `UPLOAD_NOT_COMPLETE`, устаревшая или чужая — 400 `UPLOAD_NOT_FOUND`.
+
+На фронте — хук `useUploadFile` (`frontend/src/hooks`): `uploadFile(file, {name, mimetype, onStart, onProgress, signal}) → upload_id`. Пока идёт загрузка, закрытие вкладки браузер переспрашивает.
+
 ## Жизненный цикл файла
 
 ```mermaid
@@ -107,7 +131,8 @@ sequenceDiagram
     participant R as Route
     participant Storage as Provider
 
-    U->>API: POST /attachments<br/>file + res_model + res_id
+    U->>API: POST/PATCH /attachments/uploads<br/>файл частями → upload_id
+    U->>API: POST /auto/attachments<br/>upload_id + res_model + res_id
     API->>A: create()
     A->>R: get_route(res_model)
     R-->>A: pattern_root, pattern_record

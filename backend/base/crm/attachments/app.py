@@ -3,6 +3,9 @@ import logging
 
 from backend.base.system.core.app import App
 from backend.base.crm.security.acl_post_init_mixin import ACL
+from backend.base.crm.attachments.models.attachments_upload import (
+    DEFAULT_MAX_UPLOAD_SIZE,
+)
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -58,6 +61,15 @@ class AttachmentsApp(App):
         await self._init_default_routes(env)
         await self._init_polymorphic_rules(env)
         await self._init_default_saved_filters(env)
+
+        await env.models.cron_job.create_or_update(
+            env=env,
+            name="Вложения: удалить старые загрузки частями",
+            model_name="attachment_upload",
+            method_name="cron_cleanup",
+            interval_number=1,
+            interval_type="days",
+        )
 
     async def _init_default_saved_filters(self, env: "Environment"):
         """
@@ -195,6 +207,16 @@ class AttachmentsApp(App):
                     "key": "attachments.filestore_path",
                     "value": {"value": os.path.join(os.getcwd(), "filestore")},
                     "description": "Путь к локальному хранилищу файлов",
+                    "module": "attachments",
+                    "is_system": False,
+                    "cache_ttl": -1,
+                },
+                {
+                    "key": "attachments.max_upload_size",
+                    "value": {"value": DEFAULT_MAX_UPLOAD_SIZE},
+                    "description": (
+                        "Максимальный размер загружаемого файла, байт"
+                    ),
                     "module": "attachments",
                     "is_system": False,
                     "cache_ttl": -1,

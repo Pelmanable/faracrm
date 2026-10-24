@@ -5,11 +5,12 @@ import { useParams } from 'react-router-dom';
 import { useFormContext } from '../FormContext';
 import {
   AttachmentPreview,
-  isImageMimetype,
+  UploadProgress,
   formatFileSize,
 } from '@/components/Attachment';
 import classes from './FieldPolymorphicMany2one.module.css';
-import { downloadAttachment, downloadBase64 } from '@/utils/attachmentUrls';
+import { downloadAttachment, downloadBlob } from '@/utils/attachmentUrls';
+import { fileMimetype, useFileUploads } from '@/hooks/useFileUploads';
 import { useTranslation } from 'react-i18next';
 
 interface FieldPolymorphicMany2oneProps {
@@ -25,7 +26,7 @@ export const FieldPolymorphicMany2one = ({
   model,
   label,
   accept,
-  maxSize = 10 * 1024 * 1024, // 10MB по умолчанию
+  maxSize = 1024 * 1024 * 1024, // как attachments.max_upload_size
 }: FieldPolymorphicMany2oneProps) => {
   const form = useFormContext();
   const { t } = useTranslation('common');
@@ -33,17 +34,22 @@ export const FieldPolymorphicMany2one = ({
   const theme = useMantineTheme();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Состояния
-  const [isUploading, setIsUploading] = useState(false);
+  // Новый файл грузится на сервер частями сразу при выборе; в значение
+  // поля — его upload_id, превью — из памяти браузера
+  const uploads = useFileUploads();
+  const newFile = uploads.files.file ?? null;
+  const progress = uploads.progress.file ?? null;
+  const isUploading = progress !== null;
+  // Значение поля до нового файла — вернуть, если загрузка не удалась
+  const beforeUploadRef = useRef<unknown>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [previewData, setPreviewData] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Текущее значение из формы
   const currentValue = form.getValues()?.[name];
   const hasExistingFile =
     currentValue?.id && typeof currentValue.id === 'number';
-  const hasNewFile = currentValue?.content;
+  const hasNewFile = !!currentValue?.upload_id;
   const hasFile = hasExistingFile || hasNewFile;
 
   // Запрос на скачивание файла
@@ -56,20 +62,6 @@ export const FieldPolymorphicMany2one = ({
     }
   }, [shouldFetch]);
 
-  // Чтение файла в base64
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Ошибка чтения файла'));
-      reader.onabort = () => reject(new Error('Чтение прервано'));
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]); // Убираем data:...;base64,
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
   // Обработка файла
   const processFile = async (file: File) => {
     setError(null);
@@ -80,34 +72,26 @@ export const FieldPolymorphicMany2one = ({
       return;
     }
 
-    setIsUploading(true);
-
+    if (!hasNewFile) beforeUploadRef.current = currentValue ?? null;
     try {
-      const content = await readFileAsBase64(file);
-
-      // Создаём превью для изображений
-      if (isImageMimetype(file.type)) {
-        setPreviewData(`data:${file.type};base64,${content}`);
-      } else {
-        setPreviewData(null);
-      }
-
-      // Сохраняем в форму
-      const fileData = {
-        name: file.name,
-        mimetype: file.type,
-        size: file.size,
-        res_model: model,
-        res_id: id ? Number(id) : null,
-        content: content,
-      };
-
-      form.setValues({ [name]: fileData });
+      // В форму сразу: «Сохранить» до конца загрузки сервер отклонит
+      // (загрузка не завершена), а не сохранит запись без файла
+      await uploads.start('file', file, uploadId =>
+        form.setValues({
+          [name]: {
+            name: file.name,
+            mimetype: fileMimetype(file),
+            size: file.size,
+            res_model: model,
+            res_id: id ? Number(id) : null,
+            upload_id: uploadId,
+          },
+        }),
+      );
     } catch (err) {
       console.error('Ошибка загрузки файла:', err);
       setError('Ошибка загрузки файла');
-    } finally {
-      setIsUploading(false);
+      form.setValues({ [name]: beforeUploadRef.current });
     }
   };
 
@@ -154,8 +138,8 @@ export const FieldPolymorphicMany2one = ({
 
   // Удаление файла
   const handleDelete = () => {
+    uploads.forget('file');
     form.setValues({ [name]: null });
-    setPreviewData(null);
     setError(null);
   };
 
@@ -166,14 +150,10 @@ export const FieldPolymorphicMany2one = ({
 
   // Скачивание файла
   const handleDownload = () => {
-    if (hasExistingFile) {
+    if (hasNewFile && newFile) {
+      downloadBlob(newFile, currentValue.name);
+    } else if (hasExistingFile) {
       downloadAttachment(currentValue.id, currentValue.name);
-    } else if (hasNewFile && currentValue.content) {
-      downloadBase64(
-        currentValue.content,
-        currentValue.mimetype,
-        currentValue.name,
-      );
     }
   };
 
@@ -202,8 +182,7 @@ export const FieldPolymorphicMany2one = ({
             name: currentValue.name,
             mimetype: currentValue.mimetype,
             size: currentValue.size,
-            content: currentValue.content,
-            storage_file_url: previewData || undefined,
+            file: hasNewFile ? newFile : undefined,
           }}
           onDelete={handleDelete}
           onReplace={handleReplace}
@@ -231,14 +210,18 @@ export const FieldPolymorphicMany2one = ({
             )}
 
             <Stack align="center" ta="center" gap={4}>
-              <div>
-                <Text size="sm" inline>
-                  {isUploading ? t('loading') : t('dropzone.dropFile')}
-                </Text>
-                <Text size="xs" c="dimmed" inline mt={7}>
-                  {t('dropzone.maxSize', { size: formatFileSize(maxSize) })}
-                </Text>
-              </div>
+              {isUploading ? (
+                <UploadProgress value={progress} />
+              ) : (
+                <div>
+                  <Text size="sm" inline>
+                    {t('dropzone.dropFile')}
+                  </Text>
+                  <Text size="xs" c="dimmed" inline mt={7}>
+                    {t('dropzone.maxSize', { size: formatFileSize(maxSize) })}
+                  </Text>
+                </div>
+              )}
             </Stack>
           </Group>
         </Box>

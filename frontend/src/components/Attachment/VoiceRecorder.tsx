@@ -9,25 +9,20 @@ import {
 import { useTranslation } from 'react-i18next';
 import classes from './VoiceRecorder.module.css';
 
+/** Готовая запись: файл в памяти браузера, на сервер — загрузкой частями. */
+export interface RecordedVoice {
+  file: Blob;
+  name: string;
+  mimetype: string;
+  size: number;
+  is_voice: boolean;
+}
+
 interface VoiceRecorderProps {
   /** Вызывается когда запись отправлена (кнопка отправки внутри компонента) */
-  onRecorded: (file: {
-    name: string;
-    mimetype: string;
-    size: number;
-    content: string;
-    is_voice: boolean;
-  }) => void;
+  onRecorded: (voice: RecordedVoice) => void;
   /** Вызывается когда запись готова но не отправлена (для внешней кнопки отправки) */
-  onRecordingReady?: (
-    file: {
-      name: string;
-      mimetype: string;
-      size: number;
-      content: string;
-      is_voice: boolean;
-    } | null,
-  ) => void;
+  onRecordingReady?: (voice: RecordedVoice | null) => void;
   onCancel?: () => void;
   disabled?: boolean;
   /** Показывать кнопку отправки внутри компонента (по умолчанию true) */
@@ -54,13 +49,7 @@ export function VoiceRecorder({
   const [duration, setDuration] = useState(0);
   const [, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<{
-    name: string;
-    mimetype: string;
-    size: number;
-    content: string;
-    is_voice: boolean;
-  } | null>(null);
+  const [pendingFile, setPendingFile] = useState<RecordedVoice | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -105,22 +94,16 @@ export function VoiceRecorder({
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
 
-        // Конвертируем в base64 и уведомляем родителя
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          const filename = `voice_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.webm`;
-          const file = {
-            name: filename,
-            mimetype: 'audio/webm',
-            size: blob.size,
-            content: base64,
-            is_voice: true,
-          };
-          setPendingFile(file);
-          onRecordingReady?.(file);
+        // Запись — родителю как есть: загрузит её при отправке
+        const voice: RecordedVoice = {
+          file: blob,
+          name: `voice_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.webm`,
+          mimetype: 'audio/webm',
+          size: blob.size,
+          is_voice: true,
         };
-        reader.readAsDataURL(blob);
+        setPendingFile(voice);
+        onRecordingReady?.(voice);
       };
 
       mediaRecorder.start(100); // Collect data every 100ms

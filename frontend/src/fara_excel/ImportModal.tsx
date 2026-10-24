@@ -23,10 +23,11 @@ import {
 } from '@mantine/core';
 import { IconFileSpreadsheet } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
+import { UploadProgress } from '@/components/Attachment';
+import { useFileUploads } from '@/hooks/useFileUploads';
 import {
   ExcelImportResult,
   ExcelPreview,
-  fileToBase64,
   useExcelImportMutation,
   useExcelPreviewMutation,
 } from './api';
@@ -57,9 +58,13 @@ export function ImportModal({ opened, onClose, model }: ImportModalProps) {
   const [previewFile, { isLoading: previewLoading }] =
     useExcelPreviewMutation();
   const [importFile, { isLoading: importing }] = useExcelImportMutation();
+  const uploads = useFileUploads();
+  const { forget } = uploads;
+  const progress = uploads.progress.file ?? null;
 
   const [file, setFile] = useState<File | null>(null);
-  const [content, setContent] = useState('');
+  // Файл на сервере (загружен частями)
+  const [uploadId, setUploadId] = useState<number | null>(null);
   const [preview, setPreview] = useState<ExcelPreview | null>(null);
   // Индекс колонки файла → имя поля (только сопоставленные).
   const [mapping, setMapping] = useState<Record<number, string>>({});
@@ -68,21 +73,30 @@ export function ImportModal({ opened, onClose, model }: ImportModalProps) {
   useEffect(() => {
     if (opened) {
       setFile(null);
-      setContent('');
+      setUploadId(null);
       setPreview(null);
       setMapping({});
       setResult(null);
     }
-  }, [opened]);
+    // Закрыли окно, пока файл грузится, — загрузка не нужна
+    return () => forget('file');
+  }, [opened, forget]);
 
   const handleFile = async (next: File | null) => {
     setFile(next);
+    setUploadId(null);
     setPreview(null);
     setMapping({});
-    if (!next) return;
-    const base64 = await fileToBase64(next);
-    setContent(base64);
-    const data = await previewFile({ model, content: base64 })
+    if (!next) {
+      forget('file');
+      return;
+    }
+
+    const id = await uploads.start('file', next).catch(() => null);
+    if (id === null) return;
+    setUploadId(id);
+
+    const data = await previewFile({ model, upload_id: id })
       .unwrap()
       .catch(() => null);
     if (!data) return;
@@ -113,8 +127,9 @@ export function ImportModal({ opened, onClose, model }: ImportModalProps) {
   );
 
   const handleImport = async () => {
+    if (uploadId === null) return;
     // Ошибку (400) покажет общая модалка ошибок.
-    const data = await importFile({ model, content, mapping })
+    const data = await importFile({ model, upload_id: uploadId, mapping })
       .unwrap()
       .catch(() => null);
     if (data) setResult(data);
@@ -140,6 +155,7 @@ export function ImportModal({ opened, onClose, model }: ImportModalProps) {
               onChange={handleFile}
               clearable
             />
+            {progress !== null && <UploadProgress value={progress} />}
             {TEMPLATES[model] && (
               <Anchor
                 size="xs"

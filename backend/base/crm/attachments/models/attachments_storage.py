@@ -195,9 +195,8 @@ class AttachmentStorage(DotModel):
         new_storage.type = "file"
         new_storage.active = True
 
-        storage_id = await cls.create(new_storage)
-        created = await cls.search_one(filter=[("id", "=", storage_id)])
-        return created or new_storage
+        new_storage.id = await cls.create(new_storage)
+        return new_storage
 
     async def get_routes(self):
         """

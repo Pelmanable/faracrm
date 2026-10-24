@@ -11,6 +11,7 @@
 }
 
 .preview {
+  position: relative;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -83,6 +84,13 @@
     var(--mantine-color-gray-6),
     var(--mantine-color-gray-5)
   );
+}
+
+/* Файл ещё грузится на сервер */
+.progressOverlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.35);
 }
 
 .compactDeleteBtn {
