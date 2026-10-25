@@ -18,6 +18,7 @@ from starlette.status import (
 from PIL import Image
 from urllib.parse import quote
 
+from backend.base.crm.attachments.models.attachments import mimetype_essence
 from backend.base.crm.attachments.models.attachments_upload import PART_SIZE
 from backend.base.crm.attachments.strategies import get_strategy
 from backend.base.crm.auth_token.app import AuthTokenApp
@@ -50,6 +51,33 @@ RESIZABLE_MIMETYPES = {
     "image/webp",
 }
 
+# Что браузер только показывает — превью отдаёт inline как есть. Список
+# разрешённых, а не запрет: всё, чего здесь нет (SVG, HTML, новый тип),
+# идёт исходником или скачиванием. <img>, <video> и <audio> на
+# Content-Disposition не смотрят — в чате и окне просмотра файл виден и так
+PREVIEW_INLINE_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/bmp",
+    "video/mp4",
+    "video/webm",
+    "video/ogg",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/webm",
+    "audio/wav",
+    "audio/flac",
+    "audio/aac",
+    "application/pdf",
+    "application/json",
+    "text/plain",
+}
+
 # Код и разметка, которые превью отдаёт исходником (text/plain); text/* и
 # *+xml — тоже, кроме перечисленных в preview_type. Те же типы фронт
 # открывает во вкладке как текст (TEXT_MIMETYPES в viewKind.ts)
@@ -65,18 +93,14 @@ PREVIEW_AS_TEXT_TYPES = {
 def preview_type(mimetype: str | None) -> tuple[str | None, str]:
     """Как превью отдаёт файл: (Content-Type вместо настоящего или None,
     inline/attachment). Превью открывают и по прямой ссылке — загруженный
-    HTML, SVG или XML не должен выполнить скрипты на домене CRM."""
-    mimetype = mimetype or ""
+    HTML, SVG или XML не должен выполнить скрипты на домене CRM. Так же
+    отдают файлы публичные ручки (маркетплейс, брендинг, маркетинг)."""
+    mimetype = mimetype_essence(mimetype)
+    if mimetype in PREVIEW_INLINE_TYPES:
+        return None, "inline"
     # SVG показывает <img> (скрипты там не работают), по ссылке — скачать
     if mimetype == "image/svg+xml":
         return None, "attachment"
-    # Это браузер только показывает
-    if mimetype.startswith(("image/", "video/", "audio/")) or mimetype in (
-        "application/pdf",
-        "application/json",
-        "text/plain",
-    ):
-        return None, "inline"
     # Остальной текст и разметка (html, xml, js…) — исходником
     if (
         mimetype.startswith("text/")

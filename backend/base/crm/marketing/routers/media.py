@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
+from backend.base.crm.attachments.routers.attachments import preview_type
 from backend.base.crm.auth_token.app import AuthTokenApp
 
 if TYPE_CHECKING:
@@ -39,7 +40,11 @@ async def marketing_media(req: Request, token: str):
     attachment = await env.models.attachment.sudo().search_one(
         filter=[("id", "=", video.file.id)],
     )
+    # Правило превью вложений: HTML или SVG под видом ролика по ссылке
+    # не выполнится
+    content_type, disposition = preview_type(attachment.mimetype)
     return Response(
         content=await attachment.read_content(),
-        media_type=attachment.mimetype,
+        media_type=content_type or attachment.mimetype,
+        headers={"Content-Disposition": disposition},
     )

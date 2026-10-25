@@ -63,6 +63,12 @@ SIGNATURES = (
 )
 
 
+def mimetype_essence(mimetype: str | None) -> str:
+    """Тип без параметров и регистра: «Image/SVG+XML; charset=utf-8» браузер
+    покажет как image/svg+xml — сравнивать типы можно только в таком виде."""
+    return (mimetype or "").split(";", 1)[0].strip().lower()
+
+
 def _inline_family(mimetype: str | None) -> str | None:
     """Семейство типа, который просмотр показывает inline и который можно
     подтвердить сигнатурой; None — у типа нет сигнатуры или он не inline."""
@@ -89,7 +95,9 @@ def _signature_family(content: bytes) -> str | None:
 def inline_mimetype(content: bytes, declared: str | None) -> str | None:
     """Тип присылает клиент или мессенджер, подделать его ничего не стоит.
     Тип, который браузер покажет inline, должен подтвердиться первыми
-    байтами файла (magic bytes), иначе файл отдаётся скачиванием."""
+    байтами файла (magic bytes), иначе файл отдаётся скачиванием. Тип
+    хранится без параметров: с ними точные сравнения типа не срабатывают."""
+    declared = mimetype_essence(declared) or None
     family = _inline_family(declared)
     if family is None:
         return declared  # текст, офис, архивы

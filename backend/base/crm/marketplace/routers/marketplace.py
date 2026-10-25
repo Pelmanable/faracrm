@@ -10,6 +10,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.base.crm.attachments.routers.attachments import (
     RESIZABLE_MIMETYPES,
+    preview_type,
     resize_image,
 )
 from backend.base.crm.auth_token.app import AuthTokenApp
@@ -258,10 +259,16 @@ async def app_image(
         except Exception as e:  # noqa: BLE001
             logger.warning("Resize image fails, return the original: %s", e)
 
+    # Скриншоты грузят поставщики: SVG со скриптом по прямой ссылке —
+    # скачать, как в превью вложений; <img> на витрине покажет и так
+    content_type, disposition = preview_type(attachment.mimetype)
     return Response(
         content=content,
-        media_type=attachment.mimetype,
-        headers={"Cache-Control": "public, max-age=86400"},
+        media_type=content_type or attachment.mimetype,
+        headers={
+            "Content-Disposition": disposition,
+            "Cache-Control": "public, max-age=86400",
+        },
     )
 
 

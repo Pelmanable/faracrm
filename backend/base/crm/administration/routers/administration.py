@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from backend.project_info import VERSION
 from backend.base.system.core.enviroment import env
+from backend.base.crm.attachments.routers.attachments import preview_type
 from backend.base.crm.auth_token.app import AuthTokenApp
 from backend.base.crm.company.models.company import DEFAULT_MANIFEST
 from ..app import AdministrationApp
@@ -397,12 +398,15 @@ async def branding_file(
     if not attach:
         raise HTTPException(status_code=404)
 
+    # SVG-логотип по прямой ссылке — скачать, как в превью вложений;
+    # <img>, иконка вкладки и манифест покажут его и так
+    content_type, disposition = preview_type(attach.mimetype)
     return Response(
         # Без filename* браузер не переведет проценты обратно в буквы
         headers={
-            "Content-Disposition": f"inline; filename*=utf-8''{quote(attach.name, safe='')}",
+            "Content-Disposition": f"{disposition}; filename*=utf-8''{quote(attach.name, safe='')}",
             "Cache-Control": "public, max-age=300",
         },
-        media_type=attach.mimetype,
+        media_type=content_type or attach.mimetype,
         content=await attach.sudo().read_content(),
     )
