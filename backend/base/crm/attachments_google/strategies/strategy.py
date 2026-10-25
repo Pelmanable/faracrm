@@ -1,6 +1,7 @@
 # Copyright 2025 FARA CRM
 # Attachments Google Drive module - storage strategy
 
+import asyncio
 from datetime import datetime, timezone, timedelta
 import io
 import json
@@ -30,6 +31,12 @@ SCOPES = [
 
 # Содержимое файла: GET {DRIVE_FILES_URL}/{id}?alt=media (понимает Range)
 DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
+
+
+async def _execute(request) -> Any:
+    """Запрос Drive API — в потоке: клиент Google синхронный (httplib2), и
+    загрузка файла целиком держала бы все запросы воркера."""
+    return await asyncio.to_thread(request.execute)
 
 
 class GoogleDriveStrategy(StorageStrategyBase):
@@ -71,7 +78,10 @@ class GoogleDriveStrategy(StorageStrategyBase):
         from googleapiclient.discovery import build
 
         credentials = await self.get_credentials(storage)
-        return build("drive", "v3", credentials=credentials)
+        # Сборка клиента разбирает описание API (сотни КБ JSON) — тоже в потоке
+        return await asyncio.to_thread(
+            build, "drive", "v3", credentials=credentials
+        )
 
     async def get_credentials(self, storage: "AttachmentStorage"):
         """
@@ -127,7 +137,8 @@ class GoogleDriveStrategy(StorageStrategyBase):
 
             if needs_refresh and credentials.refresh_token:
                 logger.debug("Refreshing access token...")
-                credentials.refresh(Request())
+                # HTTP-запрос к Google — в потоке, как и _execute
+                await asyncio.to_thread(credentials.refresh, Request())
 
                 # Сохраняем обновлённые credentials обратно в storage
                 await self._save_refreshed_credentials(storage, credentials)
@@ -230,15 +241,13 @@ class GoogleDriveStrategy(StorageStrategyBase):
         )
 
         try:
-            file = (
-                service.files()
-                .create(
+            file = await _execute(
+                service.files().create(
                     body=file_metadata,
                     media_body=media,
                     fields="id, webViewLink, parents",
                     supportsTeamDrives=storage.google_team_enabled or None,
                 )
-                .execute()
             )
 
             logger.info(
@@ -293,18 +302,16 @@ class GoogleDriveStrategy(StorageStrategyBase):
                 supportsTeamDrives=storage.google_team_enabled or None,
             )
 
-            buffer = io.BytesIO()
-            downloader = MediaIoBaseDownload(buffer, request)
+            # Скачивание кусками — синхронные запросы, в потоке (см. _execute)
+            def download() -> bytes:
+                buffer = io.BytesIO()
+                downloader = MediaIoBaseDownload(buffer, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                return buffer.getvalue()
 
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-                if status:
-                    logger.debug(
-                        "Download progress: %s%", int(status.progress() * 100)
-                    )
-
-            content = buffer.getvalue()
+            content = await asyncio.to_thread(download)
             logger.debug(
                 "File downloaded from Google Drive: %s bytes", len(content)
             )
@@ -398,24 +405,32 @@ class GoogleDriveStrategy(StorageStrategyBase):
                 )
 
                 if file_metadata:
+                    await _execute(
+                        service.files().update(
+                            fileId=attachment.storage_file_id,
+                            body=file_metadata,
+                            media_body=media,
+                            supportsTeamDrives=storage.google_team_enabled
+                            or None,
+                        )
+                    )
+                else:
+                    await _execute(
+                        service.files().update(
+                            fileId=attachment.storage_file_id,
+                            media_body=media,
+                            supportsTeamDrives=storage.google_team_enabled
+                            or None,
+                        )
+                    )
+            elif file_metadata:
+                await _execute(
                     service.files().update(
                         fileId=attachment.storage_file_id,
                         body=file_metadata,
-                        media_body=media,
                         supportsTeamDrives=storage.google_team_enabled or None,
-                    ).execute()
-                else:
-                    service.files().update(
-                        fileId=attachment.storage_file_id,
-                        media_body=media,
-                        supportsTeamDrives=storage.google_team_enabled or None,
-                    ).execute()
-            elif file_metadata:
-                service.files().update(
-                    fileId=attachment.storage_file_id,
-                    body=file_metadata,
-                    supportsTeamDrives=storage.google_team_enabled or None,
-                ).execute()
+                    )
+                )
 
             logger.info(
                 "File updated in Google Drive: %s", attachment.storage_file_id
@@ -461,10 +476,12 @@ class GoogleDriveStrategy(StorageStrategyBase):
         service = await self._get_service(storage)
 
         try:
-            service.files().delete(
-                fileId=attachment.storage_file_id,
-                supportsTeamDrives=storage.google_team_enabled or None,
-            ).execute()
+            await _execute(
+                service.files().delete(
+                    fileId=attachment.storage_file_id,
+                    supportsTeamDrives=storage.google_team_enabled or None,
+                )
+            )
 
             logger.info(
                 "File deleted from Google Drive: %s",
@@ -525,9 +542,8 @@ class GoogleDriveStrategy(StorageStrategyBase):
             if parent_id:
                 query += f" and parents='{parent_id}'"
 
-            response = (
-                service.files()
-                .list(
+            response = await _execute(
+                service.files().list(
                     q=query,
                     supportsAllDrives=storage.google_team_enabled or None,
                     supportsTeamDrives=storage.google_team_enabled or None,
@@ -538,7 +554,6 @@ class GoogleDriveStrategy(StorageStrategyBase):
                         "allDrives" if storage.google_team_enabled else "user"
                     ),
                 )
-                .execute()
             )
 
             # Если папка существует - возвращаем её ID
@@ -562,14 +577,12 @@ class GoogleDriveStrategy(StorageStrategyBase):
             if storage.google_team_enabled and storage.google_team_id:
                 file_metadata["driveId"] = storage.google_team_id
 
-            folder = (
-                service.files()
-                .create(
+            folder = await _execute(
+                service.files().create(
                     body=file_metadata,
                     fields="id",
                     supportsTeamDrives=storage.google_team_enabled or None,
                 )
-                .execute()
             )
 
             folder_id = folder.get("id")
@@ -597,7 +610,7 @@ class GoogleDriveStrategy(StorageStrategyBase):
             service = await self._get_service(storage)
 
             # Пробуем получить информацию о пользователе
-            about = service.about().get(fields="user").execute()
+            about = await _execute(service.about().get(fields="user"))
 
             logger.info(
                 "Google Drive connected as: %s",
@@ -665,29 +678,25 @@ class GoogleDriveStrategy(StorageStrategyBase):
 
         try:
             # Получаем текущих родителей
-            file = (
-                service.files()
-                .get(
+            file = await _execute(
+                service.files().get(
                     fileId=attachment.storage_file_id,
                     fields="parents",
                     supportsTeamDrives=storage.google_team_enabled or None,
                 )
-                .execute()
             )
 
             current_parents = ",".join(file.get("parents", []))
 
             # Перемещаем файл
-            updated_file = (
-                service.files()
-                .update(
+            updated_file = await _execute(
+                service.files().update(
                     fileId=attachment.storage_file_id,
                     addParents=new_parent_id,
                     removeParents=current_parents,
                     fields="id, parents",
                     supportsTeamDrives=storage.google_team_enabled or None,
                 )
-                .execute()
             )
 
             logger.info(

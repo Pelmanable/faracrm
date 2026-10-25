@@ -1,7 +1,12 @@
-import { useMemo } from 'react';
-import { Box, Text, Spoiler } from '@mantine/core';
+import { useMemo, useState } from 'react';
+import { Box, Button, Group, Text, Spoiler } from '@mantine/core';
 import DOMPurify, { type Config } from 'dompurify';
 import styles from './EmailMessageContent.module.css';
+
+// Адрес из интернета: http(s) или без схемы («//host/…»). Относительные
+// (наши вложения) и data: — не внешние
+const REMOTE_URL = /^(?:https?:)?\/\//i;
+const REMOTE_CSS_URL = /url\(\s*['"]?\s*(?:https?:)?\/\/[^)]*\)/gi;
 
 interface EmailMessageContentProps {
   body: string;
@@ -41,9 +46,10 @@ export function EmailMessageContent({
 }: EmailMessageContentProps) {
   // Тема и HTML едут внутри body (email-формат); тему рисуем хедером.
   const { subject, html } = useMemo(() => parseEmailBody(body), [body]);
+  const [showImages, setShowImages] = useState(false);
 
   // Санитизация HTML
-  const sanitizedHtml = useMemo(() => {
+  const { sanitizedHtml, blocked } = useMemo(() => {
     // Настраиваем DOMPurify
     const config: Config = {
       ALLOWED_TAGS: [
@@ -85,8 +91,42 @@ export function EmailMessageContent({
       img.style.height = 'auto';
     });
 
-    return div.innerHTML;
-  }, [html]);
+    // Картинки из интернета — только по кнопке: загрузка сообщает
+    // отправителю, что письмо открыли, когда и с какого IP
+    let blocked = 0;
+    if (!showImages) {
+      images.forEach(img => {
+        if (REMOTE_URL.test(img.getAttribute('src') ?? '')) {
+          img.removeAttribute('src');
+          blocked += 1;
+        }
+      });
+      div.querySelectorAll('[style*="url("]').forEach(el => {
+        const style = el.getAttribute('style') ?? '';
+        const local = style.replace(REMOTE_CSS_URL, 'none');
+        if (local !== style) {
+          el.setAttribute('style', local);
+          blocked += 1;
+        }
+      });
+    }
+
+    return { sanitizedHtml: div.innerHTML, blocked };
+  }, [html, showImages]);
+
+  const imagesNotice = blocked > 0 && (
+    <Group gap="xs" px="xs" py={4}>
+      <Text size="xs" c="dimmed">
+        Картинки из интернета скрыты
+      </Text>
+      <Button
+        size="compact-xs"
+        variant="light"
+        onClick={() => setShowImages(true)}>
+        Показать картинки
+      </Button>
+    </Group>
+  );
 
   // Проверяем, нужно ли сворачивание
   const isLongContent = html.length > 1000;
@@ -101,7 +141,8 @@ export function EmailMessageContent({
             </Text>
           </Box>
         )}
-        <Spoiler 
+        {imagesNotice}
+        <Spoiler
           maxHeight={maxHeight} 
           showLabel="Показать полностью"
           hideLabel="Свернуть"
@@ -130,7 +171,8 @@ export function EmailMessageContent({
           </Text>
         </Box>
       )}
-      <div 
+      {imagesNotice}
+      <div
         className={styles.emailBody}
         dangerouslySetInnerHTML={{ __html: sanitizedHtml }} 
       />

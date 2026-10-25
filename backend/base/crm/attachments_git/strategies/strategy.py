@@ -2,9 +2,11 @@
 # Attachments Git module - storage strategy (GitHub, read-only)
 
 import ast
+import asyncio
 import io
 import logging
 import re
+import time
 import zipfile
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +30,16 @@ GITHUB_REPO_RE = re.compile(
 HTTP_TIMEOUT = 60.0
 # Папка фронтенда модуля: frontend/src/fara_<модуль>.
 FRONTEND_PREFIX = "fara_"
+
+# Собранные архивы модулей: (хранилище, ref, модули) → (когда собран,
+# байты). Без кэша каждое скачивание — в том числе анонимное download-free —
+# тянет весь репозиторий с GitHub и пересобирает его. Ветка может сдвинуться,
+# поэтому запись живёт CACHE_SECONDS
+CACHE_SECONDS = 600
+_cache: dict[tuple, tuple[float, bytes]] = {}
+# Промахи по одному: одновременные скачивания ждут первое, а не тянут
+# репозиторий каждое
+_cache_lock = asyncio.Lock()
 
 
 def parse_file_id(file_id: str | None) -> tuple[str, list[str]]:
@@ -180,12 +192,23 @@ class GitStorageStrategy(StorageStrategyBase):
     ) -> bytes | None:
         ref, names = parse_file_id(attachment.storage_file_id)
         ref = ref or storage.git_ref or "HEAD"
-        archive = await fetch_archive(storage, ref)
-        if archive is None:
-            return None
+        key = (storage.id, ref, tuple(names))
+        async with _cache_lock:
+            cached = _cache.get(key)
+            if cached and time.monotonic() - cached[0] < CACHE_SECONDS:
+                return cached[1]
 
-        self._log_operation("read_file", attachment, ref=ref, modules=names)
-        return repack(archive, names)
+            archive = await fetch_archive(storage, ref)
+            if archive is None:
+                return None
+
+            self._log_operation(
+                "read_file", attachment, ref=ref, modules=names
+            )
+            # Пересборка архива всего репозитория — в потоке
+            content = await asyncio.to_thread(repack, archive, names)
+            _cache[key] = (time.monotonic(), content)
+            return content
 
     async def create_file(
         self,
