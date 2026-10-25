@@ -7,6 +7,7 @@ import logging
 
 import httpx
 from starlette.background import BackgroundTask
+from starlette.datastructures import Headers
 from starlette.responses import Response, StreamingResponse
 
 if TYPE_CHECKING:
@@ -234,7 +235,7 @@ class StorageStrategyBase(ABC):
         storage: "AttachmentStorage",
         attachment: "Attachment",
         headers: dict[str, str],
-        range_header: str | None,
+        request_headers: Headers,
     ) -> Response:
         """
         Ответ с файлом, который читается по кускам (Range) — только у
@@ -244,7 +245,8 @@ class StorageStrategyBase(ABC):
             storage: Экземпляр хранилища
             attachment: Экземпляр вложения
             headers: Заголовки ответа (Content-Disposition, ETag и т.д.)
-            range_header: Заголовок Range запроса браузера (или None)
+            request_headers: Заголовки запроса: Range браузера,
+                X-Accel-Mapping от nginx
 
         Returns:
             HTTP-ответ с файлом

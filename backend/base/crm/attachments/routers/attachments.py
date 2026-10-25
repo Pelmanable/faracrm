@@ -278,7 +278,7 @@ async def attachment_content(req: Request, attachment_id: Id):
     strategy = attach.storage_id and get_strategy(attach.storage_id.type)
     if strategy and strategy.supports_streaming:
         return await strategy.read_range(
-            attach.storage_id, attach, headers, req.headers.get("range")
+            attach.storage_id, attach, headers, req.headers
         )
 
     # Хранилище без стриминга — читаем целиком
@@ -373,7 +373,7 @@ async def attachment_preview(
     strategy = attach.storage_id and get_strategy(attach.storage_id.type)
     if strategy and strategy.supports_streaming:
         return await strategy.read_range(
-            attach.storage_id, attach, headers, req.headers.get("range")
+            attach.storage_id, attach, headers, req.headers
         )
 
     # Оригинал из хранилища без стриминга — читаем целиком

@@ -259,6 +259,9 @@ services:
       - backend
     # ports:
     #   - "7777:80"
+    # Файлстор — только на чтение: nginx отдаёт файлы по X-Accel-Redirect
+    volumes:
+      - filestore_docker:/app/filestore:ro
     security_opt:
       - no-new-privileges:true
 

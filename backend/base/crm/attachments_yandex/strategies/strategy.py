@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import httpx
+from starlette.datastructures import Headers
 from starlette.responses import Response
 
 from backend.base.crm.attachments.strategies.strategy import (
@@ -450,7 +451,7 @@ class YandexDiskStrategy(StorageStrategyBase):
         storage: "AttachmentStorage",
         attachment: "Attachment",
         headers: dict[str, str],
-        range_header: str | None,
+        request_headers: Headers,
     ) -> Response:
         """
         Файл с Яндекс.Диска потоком: download-URL от API, Range браузера
@@ -466,7 +467,11 @@ class YandexDiskStrategy(StorageStrategyBase):
 
         # По download-URL OAuth не требуется
         return await self._stream_url(
-            href, {}, range_header, headers, attachment.mimetype
+            href,
+            {},
+            request_headers.get("range"),
+            headers,
+            attachment.mimetype,
         )
 
     async def update_file(

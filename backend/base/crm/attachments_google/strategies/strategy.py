@@ -7,6 +7,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from starlette.datastructures import Headers
 from starlette.responses import Response
 
 from backend.base.crm.attachments.strategies.strategy import (
@@ -322,7 +323,7 @@ class GoogleDriveStrategy(StorageStrategyBase):
         storage: "AttachmentStorage",
         attachment: "Attachment",
         headers: dict[str, str],
-        range_header: str | None,
+        request_headers: Headers,
     ) -> Response:
         """
         Файл из Google Drive потоком: Drive API (alt=media) отдаёт куски
@@ -340,7 +341,7 @@ class GoogleDriveStrategy(StorageStrategyBase):
         return await self._stream_url(
             url,
             {"Authorization": f"Bearer {credentials.token}"},
-            range_header,
+            request_headers.get("range"),
             headers,
             attachment.mimetype,
         )

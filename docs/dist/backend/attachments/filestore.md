@@ -170,6 +170,35 @@ content = await strategy.read_file(storage, attachment)
 
 Удаляет файл и родительскую папку, если она опустела (только до уровня `base_path` — корень не трогается).
 
+## Отдача файла через nginx
+
+Скачивание и превью (`GET /attachments/{id}`, `/preview` и их cookie-варианты) идут через `read_range`. Кто отдаёт файл, решает заголовок запроса `X-Accel-Mapping` — так же устроен `Rack::Sendfile` в Rails.
+
+nginx перед бэкендом сообщает им, где у него файлстор: `<путь на диске>=<internal location>`. Бэкенд тогда только проверяет права и отвечает пустым телом с заголовком `X-Accel-Redirect: /filestore/<путь относительно файлстора>`. Файл с диска отдаёт nginx через `sendfile`, `Range` и `ETag`/304 обрабатывает сам. `Content-Type`, `Content-Disposition` и `Cache-Control` от бэкенда он сохраняет.
+
+```nginx
+location /api/ {
+    proxy_pass http://backend:8000/;
+    proxy_set_header X-Accel-Mapping /app/filestore/=/filestore/;
+}
+
+location ^~ /filestore/ {
+    internal;                 # снаружи сюда не зайти
+    alias /app/filestore/;
+}
+```
+
+Заголовка нет — файл отдаёт сам бэкенд, `FileResponse` с поддержкой `Range`. Так работает разработка без nginx: `uvicorn` локально, Vite с прокси на бэкенд, `docker-compose.dev.yml`. Настраивать ничего не нужно. Файл вне пути из заголовка тоже отдаёт бэкенд.
+
+`proxy_set_header` перезаписывает заголовок, присланный клиентом. Клиент, который ходит на бэкенд мимо nginx и пришлёт заголовок сам, получит пустой ответ: `X-Accel-Redirect` исполняет только nginx.
+
+Тот nginx, что проксирует `/api/` на бэкенд, ставит заголовок и должен видеть том файлстора — только на чтение:
+
+- `docker/nginx.conf` — контейнер `frontend`, том `filestore_docker` в `docker-compose.yml`;
+- `deploy/proxy/nginx/templates/fara.conf.template` — прокси, внешний том `<имя_проекта>_filestore_docker`: `deploy.sh` берёт имя проекта из `FARA_NETWORK`, задать другое можно через `FARA_FILESTORE_VOLUME`.
+
+`^~` нужен в `docker/nginx.conf`: без него `.png` и `.svg` уходят в location статики фронта и отвечают 404. Облачные хранилища отдают файл по-прежнему через бэкенд.
+
 ## Особенности
 
 - **Атомарная запись**: файл сначала пишется во временный, потом `os.rename()` атомарно подменяет старый. Если запись прервалась — на диске остаётся либо старая, либо новая версия, но не половинка.

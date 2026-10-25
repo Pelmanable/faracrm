@@ -47,6 +47,12 @@ set +a
 
 STAGING="${STAGING:-0}"
 
+# Том файлстора основного композа: compose называет его так же, как сеть, —
+# <имя_проекта>_filestore_docker при сети <имя_проекта>_default. В .env
+# задавать не нужно; export — чтобы compose подставил его в docker-compose.yml
+FARA_FILESTORE_VOLUME="${FARA_FILESTORE_VOLUME:-${FARA_NETWORK%_default}_filestore_docker}"
+export FARA_FILESTORE_VOLUME
+
 # Список доменов для server_name и certbot.
 # Если WWW_DOMAIN задан — добавляем его, если нет — используем только основной.
 SERVER_NAMES="$DOMAIN"
@@ -61,6 +67,7 @@ echo "    DOMAIN       = $DOMAIN"
 echo "    WWW_DOMAIN   = ${WWW_DOMAIN:-(пусто)}"
 echo "    EMAIL        = $EMAIL"
 echo "    FARA_NETWORK = $FARA_NETWORK"
+echo "    FARA_FILESTORE_VOLUME = $FARA_FILESTORE_VOLUME"
 echo "    STAGING      = $STAGING"
 
 # Предупреждение про кириллический домен

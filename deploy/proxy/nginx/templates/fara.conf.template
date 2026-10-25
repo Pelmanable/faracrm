@@ -103,10 +103,25 @@ server {
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Где у этого nginx файлстор (location /filestore/ ниже): с этим
+        # заголовком бэкенд не отдаёт файл сам, а отвечает X-Accel-Redirect.
+        # proxy_set_header перезаписывает значение, присланное клиентом
+        proxy_set_header X-Accel-Mapping   /app/filestore/=/filestore/;
 
         # Ответ не буферизуем: большой файл идёт клиенту потоком (Range
         # проходит насквозь), без временных файлов nginx на диске.
         proxy_buffering off;
+    }
+
+    # ── Файлы вложений (X-Accel-Redirect) ──────────────────────────
+    # Файл с диска отдаёт nginx: бэкенд проверяет права и отвечает
+    # X-Accel-Redirect: /filestore/<путь> (видит X-Accel-Mapping из
+    # location /api/). internal — снаружи сюда не зайти. Том файлстора FARA
+    # смонтирован только на чтение (FARA_FILESTORE_VOLUME).
+    # То же — в docker/nginx.conf.
+    location ^~ /filestore/ {
+        internal;
+        alias /app/filestore/;
     }
 
     # ── / → frontend (всё остальное, включая SPA-роутинг) ──────────

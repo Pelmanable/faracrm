@@ -50,7 +50,8 @@ const FILES: FileSpec[] = [
     diskName: 'cyrillic.pdf',
     uploadName: 'Отчёт за квартал.pdf',
     mimetype: 'application/pdf',
-    content: Buffer.from('PDF-content-cyrillic-1', 'utf-8'),
+    // Сигнатура %PDF- — иначе сервер сменит тип на application/octet-stream
+    content: Buffer.from('%PDF-content-cyrillic-1', 'utf-8'),
     description: 'кириллица в имени',
   },
   {

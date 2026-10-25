@@ -31,6 +31,72 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Сигнатуры (magic bytes) файлов, которые просмотр показывает inline:
+# (смещение, первые байты, семейство). Порядок важен — берётся первая
+# подошедшая: HEIC и AVIF — картинки в том же контейнере ftyp, что и mp4
+SIGNATURES = (
+    (0, b"%PDF-", "pdf"),
+    (0, b"\x89PNG", "image"),
+    (0, b"\xff\xd8\xff", "image"),  # JPEG
+    (0, b"GIF8", "image"),
+    (8, b"WEBP", "image"),  # RIFF....WEBP
+    (0, b"BM", "image"),
+    (0, b"II*\x00", "image"),  # TIFF
+    (0, b"MM\x00*", "image"),
+    (0, b"\x00\x00\x01\x00", "image"),  # ICO
+    (8, b"heic", "image"),
+    (8, b"heix", "image"),
+    (8, b"mif1", "image"),
+    (8, b"avif", "image"),
+    (4, b"ftyp", "media"),  # mp4, mov, m4a, 3gp
+    (0, b"\x1a\x45\xdf\xa3", "media"),  # webm, mkv
+    (0, b"OggS", "media"),
+    (0, b"ID3", "media"),  # mp3 с тегами
+    (0, b"\xff\xfb", "media"),  # mp3 без тегов
+    (0, b"\xff\xf3", "media"),
+    (0, b"\xff\xf2", "media"),
+    (0, b"\xff\xf1", "media"),  # aac
+    (8, b"WAVE", "media"),  # RIFF....WAVE
+    (8, b"AVI ", "media"),  # RIFF....AVI
+    (0, b"fLaC", "media"),
+    (0, b"#!AMR", "media"),
+)
+
+
+def _inline_family(mimetype: str | None) -> str | None:
+    """Семейство типа, который просмотр показывает inline и который можно
+    подтвердить сигнатурой; None — у типа нет сигнатуры или он не inline."""
+    mimetype = mimetype or ""
+    if mimetype == "application/pdf":
+        return "pdf"
+    if mimetype.startswith("image/") and mimetype != "image/svg+xml":
+        return "image"
+    # webm и mp4 бывают и аудио, и видео: голосовое audio/webm по
+    # сигнатуре — video/webm
+    if mimetype.startswith(("audio/", "video/")):
+        return "media"
+    return None
+
+
+def _signature_family(content: bytes) -> str | None:
+    """Семейство по первым байтам файла; None — сигнатуры нет в таблице."""
+    for offset, magic, family in SIGNATURES:
+        if content.startswith(magic, offset):
+            return family
+    return None
+
+
+def inline_mimetype(content: bytes, declared: str | None) -> str | None:
+    """Тип присылает клиент или мессенджер, подделать его ничего не стоит.
+    Тип, который браузер покажет inline, должен подтвердиться первыми
+    байтами файла (magic bytes), иначе файл отдаётся скачиванием."""
+    family = _inline_family(declared)
+    if family is None:
+        return declared  # текст, офис, архивы
+    if _signature_family(content) == family:
+        return declared
+    return "application/octet-stream"
+
 
 class Attachment(AuditMixin, DotModel):
     """
@@ -345,6 +411,9 @@ class Attachment(AuditMixin, DotModel):
             if not payload.size:
                 payload.size = len(payload.content)
             payload.checksum = hashlib.sha1(payload.content).hexdigest()
+            payload.mimetype = inline_mimetype(
+                payload.content, payload.mimetype
+            )
 
             route, storage, parent_folder_id, parent_folder_name = (
                 await self._resolve_route_and_folder(
@@ -422,10 +491,14 @@ class Attachment(AuditMixin, DotModel):
             # payload.content здесь гарантированно bytes (None и Binary отсечены выше)
             payload.size = len(payload.content)
             payload.checksum = hashlib.sha1(payload.content).hexdigest()
-            # size и checksum считает сервер, а PUT автокруда передаёт
+            # Новый файл мог прийти без типа — проверяется прежний
+            payload.mimetype = inline_mimetype(
+                payload.content, payload.mimetype or self.mimetype
+            )
+            # size, checksum и тип считает сервер, а PUT автокруда передаёт
             # только присланные поля — иначе они не запишутся
             if fields:
-                fields = [*fields, "size", "checksum"]
+                fields = [*fields, "size", "checksum", "mimetype"]
 
             strategy = get_strategy(self.storage_id.type)
             result = await strategy.update_file(
@@ -518,6 +591,9 @@ class Attachment(AuditMixin, DotModel):
             if not payload.size:
                 payload.size = len(payload.content)
             payload.checksum = hashlib.sha1(payload.content).hexdigest()
+            payload.mimetype = inline_mimetype(
+                payload.content, payload.mimetype
+            )
 
             route, storage, parent_id, parent_name = (
                 await self._resolve_route_and_folder(

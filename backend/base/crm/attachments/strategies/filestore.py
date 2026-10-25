@@ -12,8 +12,10 @@ import hashlib
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
-from starlette.responses import FileResponse
+from starlette.datastructures import Headers
+from starlette.responses import FileResponse, Response
 
 from .strategy import StorageStrategyBase
 from backend.base.system.core.enviroment import env
@@ -299,15 +301,31 @@ class FileStoreStrategy(StorageStrategyBase):
         storage: "AttachmentStorage",
         attachment: "Attachment",
         headers: dict[str, str],
-        range_header: str | None,
-    ) -> FileResponse:
+        request_headers: Headers,
+    ) -> Response:
         """
         Файл с диска кусками по 64 КБ: Range (перемотка видео, докачка)
-        FileResponse берёт из запроса и обрабатывает сам — range_header не
-        нужен; весь файл в память не читается.
+        FileResponse берёт из запроса и обрабатывает сам; весь файл в память
+        не читается.
+
+        За nginx файл отдаёт nginx. Он сообщает, где у него файлстор:
+        X-Accel-Mapping: <путь на диске>=<internal location> — ответ тогда
+        без тела, с путём файла в X-Accel-Redirect. Права к этому моменту
+        проверены; Content-Type, Content-Disposition и Cache-Control nginx
+        сохраняет, Range и ETag обрабатывает сам.
         """
+        disk_path, _, location = request_headers.get(
+            "x-accel-mapping", ""
+        ).partition("=")
+        file_path = attachment.storage_file_url
+        if location and file_path.startswith(disk_path):
+            target = location + quote(file_path[len(disk_path) :])
+            return Response(
+                headers={**headers, "X-Accel-Redirect": target},
+                media_type=attachment.mimetype,
+            )
         return FileResponse(
-            attachment.storage_file_url,
+            file_path,
             media_type=attachment.mimetype,
             headers=headers,
         )

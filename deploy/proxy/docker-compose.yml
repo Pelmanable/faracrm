@@ -12,6 +12,9 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
+      # Файлстор FARA — только на чтение: файлы вложений nginx отдаёт сам
+      # по X-Accel-Redirect от бэкенда (location /filestore/ в шаблоне)
+      - filestore:/app/filestore:ro
     networks:
       - proxy
       - crm
@@ -38,3 +41,11 @@ networks:
     # Compose автоматически читает .env из этой папки.
     external: true
     name: ${FARA_NETWORK}
+
+volumes:
+  filestore:
+    # Том файлстора основного композа FARA — он уже есть, его создаёт
+    # основной композ. Имя deploy.sh выводит из FARA_NETWORK; значение после
+    # :- — для запуска compose руками при папке проекта faracrm.
+    external: true
+    name: ${FARA_FILESTORE_VOLUME:-faracrm_filestore_docker}
