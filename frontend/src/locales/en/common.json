@@ -134,7 +134,8 @@
     "saved": "Document saved",
     "saveFailed": "Failed to save the document",
     "loadFailed": "Failed to open the document",
-    "unsavedClose": "There are unsaved changes. Close without saving?"
+    "unsavedClose": "There are unsaved changes. Close without saving?",
+    "spreadsheetTooLarge": "The spreadsheet is too large for the built-in editor. Download the file and open it in Excel."
   },
   "dropzone": {
     "dropFile": "Drag a file here or click to select",

@@ -15,8 +15,13 @@ import {
   Text,
 } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
+import { downloadAttachment } from '@/utils/attachmentUrls';
 import { useAttachmentFileEditor } from './useAttachmentFileEditor';
 import type { SpreadsheetEditorFrameHandle } from './SpreadsheetEditorFrame';
+
+// Файл больше FortuneSheet разбирает в главном потоке десятки секунд, а
+// формат, протянутый на миллион строк, вешает вкладку — такой не открываем
+const MAX_EDITABLE_SIZE = 3 * 1024 * 1024;
 
 const SpreadsheetEditorFrame = lazy(() =>
   import('./SpreadsheetEditorFrame').then(m => ({
@@ -50,6 +55,7 @@ export function SpreadsheetEditorModal({
       onClose,
       onSaved,
     });
+  const tooLarge = !!bytes && bytes.byteLength > MAX_EDITABLE_SIZE;
 
   const handleSave = useCallback(
     () => save(() => frameRef.current?.save()),
@@ -91,7 +97,7 @@ export function SpreadsheetEditorModal({
             size="xs"
             onClick={handleSave}
             loading={saving}
-            disabled={!bytes}>
+            disabled={!bytes || tooLarge}>
             {t('save')}
           </Button>
           <Button size="xs" variant="default" onClick={handleClose}>
@@ -108,6 +114,18 @@ export function SpreadsheetEditorModal({
             </Text>
             <Button variant="default" onClick={onClose}>
               {t('close')}
+            </Button>
+          </Stack>
+        </Center>
+      ) : tooLarge ? (
+        <Center style={{ flex: 1 }}>
+          <Stack align="center" gap="sm">
+            <Text>{t('docxEditor.spreadsheetTooLarge')}</Text>
+            <Button
+              onClick={() =>
+                downloadAttachment(attachmentId, filename ?? undefined)
+              }>
+              {t('download')}
             </Button>
           </Stack>
         </Center>

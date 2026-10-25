@@ -1,6 +1,7 @@
 # Copyright 2025 FARA CRM
 # Attachments module - загрузка файла частями до создания вложения
 
+import asyncio
 import contextlib
 import logging
 from datetime import datetime, timedelta, timezone
@@ -217,24 +218,21 @@ class AttachmentUpload(DotModel):
                 [p.upload_id for p in with_upload]
             )
         }
-        for payload in with_upload:
-            payload.content = await uploads[payload.upload_id].read_file()
+
+        # Файлы читаются параллельно
+        contents = await asyncio.gather(
+            *(uploads[p.upload_id].read_file() for p in with_upload)
+        )
+        for payload, content in zip(with_upload, contents):
+            payload.content = content
         return list(uploads.values())
 
     @classmethod
     async def release(cls, uploads: list[Self]) -> None:
         """Вложения записаны — удалить их загрузки: строки одним запросом,
-        временные файлы."""
-        if not uploads:
-            return
-        await cls._get_db_session().execute(
-            f"DELETE FROM {cls.__table__} WHERE id = ANY(%s::int[])",
-            ([upload.id for upload in uploads],),
-            cursor="void",
-        )
-        for upload in uploads:
-            with contextlib.suppress(FileNotFoundError):
-                await aiofiles.os.remove(await upload.path())
+        временные файлы параллельно."""
+        await cls.sudo().delete_bulk([upload.id for upload in uploads])
+        await asyncio.gather(*(upload.remove_file() for upload in uploads))
 
     async def append(self, offset: int, chunk: bytes) -> int | None:
         """
@@ -272,10 +270,14 @@ class AttachmentUpload(DotModel):
             await f.truncate()
         return offset + len(chunk)
 
-    async def discard(self) -> None:
-        """Удалить загрузку: строку и временный файл."""
+    async def remove_file(self) -> None:
+        """Удалить временный файл, если он ещё есть."""
         with contextlib.suppress(FileNotFoundError):
             await aiofiles.os.remove(await self.path())
+
+    async def discard(self) -> None:
+        """Удалить загрузку: строку и временный файл."""
+        await self.remove_file()
         await self.delete()
 
     @classmethod
