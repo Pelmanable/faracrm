@@ -68,12 +68,15 @@ class AttachmentCache(DotModel):
         """
         Получить folder ID из кеша.
 
+        Кеш читает и пишет только сервер (под sudo): у локального хранилища
+        folder_id — путь на диске, клиенту его ни задавать, ни видеть незачем.
+
         Args:
             route_id: ID маршрута
             res_model: Модель или '_default'
         """
 
-        cached = await cls.search_one(
+        cached = await cls.sudo().search_one(
             filter=[
                 ("route_id", "=", route_id),
                 ("res_model", "=", res_model),
@@ -93,9 +96,9 @@ class AttachmentCache(DotModel):
         folder_id: str,
         folder_name: str | None = None,
     ) -> None:
-        """Сохранить folder ID в кеш (UPSERT)."""
+        """Сохранить folder ID в кеш (UPSERT, под sudo — см. get_folder)."""
 
-        existing = await cls.search_one(
+        existing = await cls.sudo().search_one(
             filter=[
                 ("route_id", "=", route_id),
                 ("res_model", "=", res_model),
@@ -104,7 +107,7 @@ class AttachmentCache(DotModel):
         )
 
         if existing:
-            await existing.update(
+            await existing.sudo().update(
                 cls(folder_id=folder_id, folder_name=folder_name)
             )
         else:
@@ -113,7 +116,7 @@ class AttachmentCache(DotModel):
             new_cache.res_model = res_model
             new_cache.folder_id = folder_id
             new_cache.folder_name = folder_name
-            await cls.create(new_cache)
+            await cls.sudo().create(new_cache)
 
     @classmethod
     async def delete_folder(

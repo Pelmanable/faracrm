@@ -36,11 +36,11 @@ PORTAL_ACL = {
     "language": ACL.READ_ONLY,
     "attachment": ACL.FULL,
     # Загрузка файла (Attachment.create) под сессией юзера ищет маршрут и
-    # папку: читает реестр моделей, маршруты и кэш папок, а при первой
-    # загрузке в модель пишет строку кэша — без этих прав любой upload = 403.
+    # папку: читает реестр моделей и маршруты — без этих прав любой
+    # upload = 403. Кэш папок сервер пишет сам под sudo (AttachmentCache).
     "model": ACL.READ_ONLY,
     "attachment_route": ACL.READ_ONLY,
-    "attachment_cache": ACL.CREATE_READ,
+    "attachment_cache": ACL.NO_ACCESS,
     "saved_filter": ACL.FULL,
     "column_setting": ACL.FULL,
     # Общие настройки форм читает каждая форма (прогрев при входе).
@@ -196,6 +196,21 @@ class MarketplaceApp(App):
                 [["create_user_id", "=", "{{user_id}}"]],
                 {"create": True},
             ),
+            # Файлы приложений: общее правило «видишь запись — видишь её
+            # файлы» для marketplace_app выключено (__polymorphic_parent_access__).
+            # Только чтение и изменение: правило на удаление стало бы
+            # единственным для attachment и запретило бы удалять все прочие
+            # файлы CRM.
+            (
+                "Marketplace: vendor sees own app files",
+                "attachment",
+                None,
+                [
+                    ["res_model", "=", "marketplace_app"],
+                    ["create_user_id", "=", "{{user_id}}"],
+                ],
+                {"read": True, "update": True},
+            ),
             # Портальная роль: свой профиль, свои фильтры и колонки — те же
             # правила, что у base_user в users / saved_filters / view_settings.
             (
@@ -261,6 +276,15 @@ class MarketplaceApp(App):
                     admin_id,
                     BYPASS_DOMAIN,
                     ALL_PERMS,
+                ),
+                # Домен, а не BYPASS: обход на attachment открыл бы все файлы
+                # CRM. Права — как у правила поставщика выше.
+                (
+                    "Marketplace: system admin sees app files",
+                    "attachment",
+                    admin_id,
+                    [["res_model", "=", "marketplace_app"]],
+                    {"read": True, "update": True},
                 ),
             ]
 

@@ -4,6 +4,9 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 import logging
+import os
+import re
+import unicodedata
 
 import httpx
 from starlette.background import BackgroundTask
@@ -20,6 +23,96 @@ logger = logging.getLogger(__name__)
 
 # Таймаут ожидания данных от провайдера при потоковой отдаче (секунды)
 STREAM_TIMEOUT = 60.0
+
+# Символы, которые ВСЕГДА удаляем из имени файла:
+# - \x00..\x1F и \x7F — control chars (включая NULL, \n, \t, \r),
+#   ломают open(), шеллы, логи, заголовки HTTP.
+# - / и \ — path separators, иначе path traversal.
+# - <>:"|?* — Windows-reserved символы (для кросс-платформенности).
+_FORBIDDEN_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')
+
+# Windows-reserved базовые имена (без расширения, регистронезависимо).
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+# Максимальная длина имени файла в БАЙТАХ для большинства FS
+# (ext4, NTFS, APFS, XFS — все 255).
+_MAX_FILENAME_BYTES = 255
+
+
+def sanitize_filename(filename: str, fallback: str = "file") -> str:
+    """
+    Минимальная очистка имени файла под современные best practices.
+
+    Принципы (state of the art 2024-2026; см. pathvalidate, npm
+    sanitize-filename, S3/GDrive guidelines):
+    - Удаляем ТОЛЬКО то, что реально опасно или невалидно для FS:
+      control chars, path separators, Windows-reserved символы.
+    - Сохраняем максимум исходного: кириллицу, любой Unicode,
+      эмодзи, пробелы, скобки, точки внутри имени.
+    - Нормализуем в NFC (каноничная форма для FS, рекомендация W3C).
+      NFKD — НЕ годится: разваливает символы и в паре с
+      .encode("ascii", "ignore") убивает кириллицу полностью.
+    - Защита от path traversal через os.path.basename.
+    - Лимит длины — в БАЙТАХ (255), а не символах: один UTF-8 символ
+      может занимать до 4 байт, обрезка по символам некорректна.
+    - Fallback для пустого результата, ".", "..", только-точек/пробелов.
+    - Windows-reserved имена (CON, PRN, NUL, COM1..LPT9) префиксуем
+      подчёркиванием, чтобы файл создавался корректно везде.
+
+    Args:
+        filename: исходное имя (может содержать что угодно от пользователя).
+        fallback: что подставить, если после очистки ничего не осталось.
+
+    Returns:
+        Безопасное имя файла, валидное на ext4/NTFS/APFS.
+    """
+    # 1. Path traversal: оставляем только базовое имя
+    filename = os.path.basename(filename or "")
+
+    # 2. NFC: каноничная форма (НЕ NFKD — тот разваливает символы)
+    filename = unicodedata.normalize("NFC", filename)
+
+    # 3. Удаляем только реально опасные символы
+    filename = _FORBIDDEN_FILENAME_CHARS.sub("", filename)
+
+    # 4. Trailing/leading whitespace и точки на конце ломают Windows
+    filename = filename.strip().rstrip(".")
+
+    # 5. Спецслучаи "." / ".." / пусто
+    if filename in ("", ".", ".."):
+        return fallback
+
+    # 6. Windows-reserved (CON, PRN, NUL, LPT1...) — префикс
+    name, ext = os.path.splitext(filename)
+    if name.upper() in _WINDOWS_RESERVED_NAMES:
+        name = f"_{name}"
+        filename = f"{name}{ext}"
+
+    # 7. Обрезка до 255 байт с сохранением расширения и валидного UTF-8
+    encoded = filename.encode("utf-8")
+    if len(encoded) > _MAX_FILENAME_BYTES:
+        ext_bytes = ext.encode("utf-8")
+        max_name_bytes = _MAX_FILENAME_BYTES - len(ext_bytes)
+        if max_name_bytes <= 0:
+            # Экзотика: расширение само длиннее лимита — режем целиком
+            filename = encoded[:_MAX_FILENAME_BYTES].decode(
+                "utf-8", errors="ignore"
+            )
+        else:
+            name_bytes = name.encode("utf-8")[:max_name_bytes]
+            # errors="ignore" срежет хвостовой битый UTF-8
+            name = name_bytes.decode("utf-8", errors="ignore")
+            filename = f"{name}{ext}"
+
+    # 8. После всех манипуляций имя могло опять стать пустым
+    return filename or fallback
 
 
 class StorageStrategyBase(ABC):
@@ -279,6 +372,15 @@ class StorageStrategyBase(ABC):
     # ========================================================================
     # Вспомогательные методы
     # ========================================================================
+
+    @staticmethod
+    def storage_name(attachment: "Attachment", filename: str) -> str:
+        """Имя файла в хранилище: <id записи>-<очищенное имя>. Префикс id
+        делает имя уникальным по построению — имя задаёт отправитель
+        («Договор.pdf» шлют все подряд), и без префикса второй файл затёр
+        бы первый. Пользователю имя отдаётся из базы (attachment.name).
+        Хранилищам с id файлов (Google Drive) префикс не нужен."""
+        return f"{attachment.id}-{sanitize_filename(filename)}"
 
     async def _stream_url(
         self,

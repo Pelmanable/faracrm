@@ -1,6 +1,7 @@
 # Copyright 2025 FARA CRM
 # Marketplace module - публичный каталог, покупка, скачивание, статистика
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import quote
@@ -253,8 +254,12 @@ async def app_image(
 
     if (w or h) and attachment.mimetype in RESIZABLE_MIMETYPES:
         try:
-            content = resize_image(
-                content, w or h or 100, h or w or 100, attachment.mimetype
+            content = await asyncio.to_thread(
+                resize_image,
+                content,
+                w or h or 100,
+                h or w or 100,
+                attachment.mimetype,
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("Resize image fails, return the original: %s", e)
@@ -419,7 +424,9 @@ async def download_app(req: Request, app_id: Id):
             )
 
     # Архив из git-хранилища сервер собирает прямо здесь (read_content).
-    archive = await app.get_archive()
+    # Под sudo: файлы приложения покупателю не видны (только поставщику и
+    # админу), а покупка проверена выше.
+    archive = await app.sudo().get_archive()
     content = await archive.read_content() if archive else None
     if content is None:
         raise _not_found()

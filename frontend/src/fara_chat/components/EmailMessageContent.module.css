@@ -17,6 +17,12 @@
   line-height: 1.5;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  /* Письмо рисуется только внутри своего блока: style отправителя с
+     position: fixed и огромным z-index иначе накрыл бы весь CRM (поддельный
+     экран входа). contain: paint делает блок контейнером для fixed и
+     absolute и обрезает всё, что за ним; широкие таблицы — прокруткой */
+  contain: paint;
+  overflow-x: auto;
 }
 
 /* Стили для элементов внутри email */

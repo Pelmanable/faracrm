@@ -80,6 +80,11 @@ class MarketplaceApplication(AuditMixin, PolymorphicParentMixin):
     """
 
     __table__ = "marketplace_app"
+    # Файлы приложения (архив модуля, скриншоты) не видны всем, кто видит
+    # приложение: опубликованное видят все, а платный архив — только после
+    # покупки. Кто их видит — правила маркетплейса на attachment (app.py):
+    # поставщик свои, system_admin все; витрина и загрузки — под sudo
+    __polymorphic_parent_access__ = False
 
     id: int = Integer(primary_key=True)
     code: str | None = Char(
@@ -132,14 +137,31 @@ class MarketplaceApplication(AuditMixin, PolymorphicParentMixin):
             raise self._archive_required()
         return await super().update(payload, fields, session, depends_jobs)
 
+    @classmethod
+    async def _vendor_ids(cls, app_ids: list[int]) -> dict[int, int | None]:
+        """Поставщик (create_user_id) каждого приложения. Файл к записи
+        прикрепить может кто угодно — архивом и скриншотами считаем только
+        загруженное поставщиком, иначе раздавался бы подложенный файл."""
+        apps = await cls.sudo().search(
+            fields=["id", "create_user_id"],
+            filter=[("id", "in", app_ids)],
+            limit=len(app_ids),
+        )
+        return {
+            app.id: app.create_user_id and app.create_user_id.id
+            for app in apps
+        }
+
     async def get_archive(self) -> "Attachment | None":
-        """Последний загруженный zip приложения."""
+        """Последний zip, загруженный поставщиком приложения."""
+        vendors = await self._vendor_ids([self.id])
         return await env.models.attachment.search_one(
             fields=ATTACHMENT_CONTENT_FIELDS,
             filter=[
                 ("res_model", "=", self.__table__),
                 ("res_id", "=", self.id),
                 ("mimetype", "in", ARCHIVE_MIMETYPES),
+                ("create_user_id", "=", vendors.get(self.id)),
             ],
             sort="id",
             order="desc",
@@ -147,11 +169,13 @@ class MarketplaceApplication(AuditMixin, PolymorphicParentMixin):
 
     @classmethod
     async def get_screenshots(cls, app_ids: list[int]) -> list["Attachment"]:
-        """Картинки-вложения приложений, старые первыми (первая — обложка)."""
+        """Картинки поставщиков приложений, старые первыми (первая —
+        обложка)."""
         if not app_ids:
             return []
-        return await env.models.attachment.search(
-            fields=["id", "name", "res_id", "checksum"],
+        vendors = await cls._vendor_ids(app_ids)
+        screenshots = await env.models.attachment.search(
+            fields=["id", "name", "res_id", "checksum", "create_user_id"],
             filter=[
                 ("res_model", "=", cls.__table__),
                 ("res_id", "in", app_ids),
@@ -161,6 +185,12 @@ class MarketplaceApplication(AuditMixin, PolymorphicParentMixin):
             order="asc",
             limit=1000,
         )
+        return [
+            shot
+            for shot in screenshots
+            if (shot.create_user_id and shot.create_user_id.id)
+            == vendors.get(shot.res_id)
+        ]
 
     @classmethod
     async def sync_from_git(cls) -> dict[str, int]:

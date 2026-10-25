@@ -38,10 +38,11 @@ class AttachmentsApp(App):
         "attachment": ACL.FULL,
         "attachment_storage": ACL.READ_ONLY,
         "attachment_route": ACL.READ_ONLY,
-        # Строка кэша корневой папки создаётся при первой загрузке в модель
-        # (AttachmentCache.set_folder) под сессией юзера — без create первую
-        # загрузку в «новую» модель мог сделать только суперпользователь.
-        "attachment_cache": ACL.CREATE_READ,
+        # Кэш папок читает и пишет сервер под sudo (AttachmentCache): у
+        # локального хранилища folder_id — путь на диске, писать его клиенту
+        # нельзя. Старым базам права понизить вручную — ACLHook существующие
+        # строки не меняет.
+        "attachment_cache": ACL.NO_ACCESS,
     }
     ROLE_ACL = {
         "system_admin": {

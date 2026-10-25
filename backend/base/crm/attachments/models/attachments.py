@@ -8,6 +8,7 @@ import hashlib
 import logging
 from typing import Self, TYPE_CHECKING
 
+from backend.base.system.dotorm.dotorm.access import Operation
 from backend.base.system.dotorm.dotorm.decorators import hybridmethod
 from backend.base.system.dotorm.dotorm.fields import (
     Binary,
@@ -508,19 +509,21 @@ class Attachment(AuditMixin, DotModel):
             if fields:
                 fields = [*fields, "size", "checksum", "mimetype"]
 
+            # Сначала строка: права и закрытые поля проверяет UPDATE, и до
+            # диска дело доходит, только если он прошёл. Сбой записи файла
+            # откатит транзакцию вместе с ним
+            await super().update(payload, fields, session, depends_jobs)
+
+            # Содержимое меняется на месте, без переименования в хранилище:
+            # путь в базе остаётся верным, а имя пользователю отдаётся из
+            # базы (attachment.name)
             strategy = get_strategy(self.storage_id.type)
-            result = await strategy.update_file(
+            await strategy.update_file(
                 storage=self.storage_id,
                 attachment=self,
                 content=payload.content,
-                filename=(payload.name if payload.name != self.name else None),
                 mimetype=payload.mimetype,
             )
-
-            if result.get("storage_file_url"):
-                payload.storage_file_url = result["storage_file_url"]
-
-            await super().update(payload, fields, session, depends_jobs)
             await AttachmentUpload.release(uploads)
 
     @hybridmethod
@@ -698,8 +701,10 @@ class Attachment(AuditMixin, DotModel):
         Returns:
             True если успешно удалено
         """
+        # Права — до удаления файла (super().delete проверит их уже после).
         # Файл удаляется ДО записи в БД. Если не удалось — продолжаем
         # удаление из БД (orphan-файл лучше, чем orphan-запись).
+        await self._check_access(Operation.DELETE, record_ids=[self.id])
         if self.storage_id and (self.storage_file_url or self.storage_file_id):
             await self._safe_delete_file()
 
@@ -723,11 +728,12 @@ class Attachment(AuditMixin, DotModel):
         if not ids:
             return
 
-        # Подгружаем записи, чтобы знать storage_id и пути к файлам.
-        # В search() _check_access фильтрует недоступные — но delete_bulk
-        # у super() делает свою проверку прав по ids, так что тут достаточно
-        # просто загрузки.
+        # Права — до удаления файлов: отказ в super().delete_bulk оставил бы
+        # строки без файлов.
         cls = self.__class__
+        await cls._check_access(Operation.DELETE, record_ids=ids)
+
+        # Подгружаем записи, чтобы знать storage_id и пути к файлам.
         records = await cls.search(filter=[("id", "in", ids)])
 
         file_tasks = [

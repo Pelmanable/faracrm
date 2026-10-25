@@ -469,6 +469,17 @@ async def has_polymorphic_parent_access(args: list, ctx: dict):
         else:
             parent_model_class_name = res_model_name
 
+        parent_table = parent_cls.__table__
+        # Ребёнок самого себя (res_model = своя таблица) смысла не имеет, а
+        # правила такого «родителя» раскрыли бы этот же оператор снова —
+        # бесконечная рекурсия
+        if parent_table == table_name:
+            continue
+        # Модель сама решает, кто видит её файлы (своими правилами на
+        # attachment), — доступ «через родителя» для неё выключен
+        if getattr(parent_cls, "__polymorphic_parent_access__", True) is False:
+            continue
+
         # ACL родителя
         try:
             has_acl = await checker._check_acl(
@@ -480,15 +491,18 @@ async def has_polymorphic_parent_access(args: list, ctx: dict):
             continue
 
         # Rules родителя (могут содержать вложенные @-операторы —
-        # они уже зарезолвлены внутри _get_domains)
+        # они уже зарезолвлены внутри _get_domains). Ошибка — доступа нет:
+        # без WHERE подзапрос отдал бы все записи родителя
         try:
             parent_domain = await checker._get_domains(
                 role_ids, parent_model_class_name, Operation.READ, user_id
             )
         except Exception:
-            parent_domain = None
+            logger.exception(
+                "polymorphic: rules of '%s' failed", parent_model_class_name
+            )
+            continue
 
-        parent_table = parent_cls.__table__
         block_sql = (
             f'("{model_field}" = %s AND "{id_field}" IN ('
             f'SELECT id FROM "{parent_table}"'

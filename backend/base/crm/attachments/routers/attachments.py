@@ -135,11 +135,22 @@ def parse_email(content: bytes) -> dict:
     }
 
 
+# Больше — не ресайзим: картинка в несколько мегабайт распаковывается в
+# гигабайты памяти. 50 Мп — фото с телефона (8000×6000) проходят
+RESIZE_MAX_PIXELS = 50_000_000
+
+
 def resize_image(
     image_bytes: bytes, width: int, height: int, mimetype: str
 ) -> bytes:
-    """Ресайз изображения с сохранением пропорций"""
+    """Ресайз изображения с сохранением пропорций. Тяжёлая работа —
+    вызывать в потоке (asyncio.to_thread). Слишком большая картинка —
+    ValueError: вызывающие отдают оригинал."""
     img = Image.open(io.BytesIO(image_bytes))
+    if img.width * img.height > RESIZE_MAX_PIXELS:
+        raise ValueError(
+            f"Image too large to resize: {img.width}x{img.height}"
+        )
 
     # Конвертируем RGBA в RGB для JPEG
     if img.mode == "RGBA" and mimetype in ("image/jpeg", "image/jpg"):
@@ -379,8 +390,12 @@ async def attachment_preview(
             try:
                 width = w or h or 100
                 height = h or w or 100
-                attachment_content = resize_image(
-                    attachment_content, width, height, attach.mimetype
+                attachment_content = await asyncio.to_thread(
+                    resize_image,
+                    attachment_content,
+                    width,
+                    height,
+                    attach.mimetype,
                 )
             except Exception as e:
                 # Если ресайз не удался, возвращаем оригинал
@@ -434,7 +449,8 @@ async def attachment_email(req: Request, attachment_id: Id):
             content={"error": "#NOT_FOUND"}, status_code=HTTP_404_NOT_FOUND
         )
 
-    return parse_email(await attach.read_content())
+    # Разбор письма — в потоке: большое письмо не держит остальные запросы
+    return await asyncio.to_thread(parse_email, await attach.read_content())
 
 
 # ── Cookie-based routes for binary content ──────────────

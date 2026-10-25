@@ -1,9 +1,6 @@
 # Copyright 2025 FARA CRM
 # Attachments module - FileStore (local filesystem) strategy
 
-import re
-import unicodedata
-
 import aiofiles
 import aiofiles.os
 import asyncio
@@ -17,7 +14,7 @@ from urllib.parse import quote
 from starlette.datastructures import Headers
 from starlette.responses import FileResponse, Response
 
-from .strategy import StorageStrategyBase
+from .strategy import StorageStrategyBase, sanitize_filename
 from backend.base.system.core.enviroment import env
 
 if TYPE_CHECKING:
@@ -29,99 +26,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Символы, которые ВСЕГДА удаляем из имени файла:
-# - \x00..\x1F и \x7F — control chars (включая NULL, \n, \t, \r),
-#   ломают open(), шеллы, логи, заголовки HTTP.
-# - / и \ — path separators, иначе path traversal.
-# - <>:"|?* — Windows-reserved символы (для кросс-платформенности).
-_FORBIDDEN_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f<>:"/\\|?*]')
-
-# Windows-reserved базовые имена (без расширения, регистронезависимо).
-_WINDOWS_RESERVED_NAMES = {
-    "CON",
-    "PRN",
-    "AUX",
-    "NUL",
-    *(f"COM{i}" for i in range(1, 10)),
-    *(f"LPT{i}" for i in range(1, 10)),
-}
-
-# Максимальная длина имени файла в БАЙТАХ для большинства FS
-# (ext4, NTFS, APFS, XFS — все 255).
-_MAX_FILENAME_BYTES = 255
-
-
-def sanitize_filename(filename: str, fallback: str = "file") -> str:
-    """
-    Минимальная очистка имени файла под современные best practices.
-
-    Принципы (state of the art 2024-2026; см. pathvalidate, npm
-    sanitize-filename, S3/GDrive guidelines):
-    - Удаляем ТОЛЬКО то, что реально опасно или невалидно для FS:
-      control chars, path separators, Windows-reserved символы.
-    - Сохраняем максимум исходного: кириллицу, любой Unicode,
-      эмодзи, пробелы, скобки, точки внутри имени.
-    - Нормализуем в NFC (каноничная форма для FS, рекомендация W3C).
-      NFKD — НЕ годится: разваливает символы и в паре с
-      .encode("ascii", "ignore") убивает кириллицу полностью.
-    - Защита от path traversal через os.path.basename.
-    - Лимит длины — в БАЙТАХ (255), а не символах: один UTF-8 символ
-      может занимать до 4 байт, обрезка по символам некорректна.
-    - Fallback для пустого результата, ".", "..", только-точек/пробелов.
-    - Windows-reserved имена (CON, PRN, NUL, COM1..LPT9) префиксуем
-      подчёркиванием, чтобы файл создавался корректно везде.
-
-    Args:
-        filename: исходное имя (может содержать что угодно от пользователя).
-        fallback: что подставить, если после очистки ничего не осталось.
-
-    Returns:
-        Безопасное имя файла, валидное на ext4/NTFS/APFS.
-    """
-    # 1. Path traversal: оставляем только базовое имя
-    filename = os.path.basename(filename or "")
-
-    # 2. NFC: каноничная форма (НЕ NFKD — тот разваливает символы)
-    filename = unicodedata.normalize("NFC", filename)
-
-    # 3. Удаляем только реально опасные символы
-    filename = _FORBIDDEN_FILENAME_CHARS.sub("", filename)
-
-    # 4. Trailing/leading whitespace и точки на конце ломают Windows
-    filename = filename.strip().rstrip(".")
-
-    # 5. Спецслучаи "." / ".." / пусто
-    if filename in ("", ".", ".."):
-        return fallback
-
-    # 6. Windows-reserved (CON, PRN, NUL, LPT1...) — префикс
-    name, ext = os.path.splitext(filename)
-    if name.upper() in _WINDOWS_RESERVED_NAMES:
-        name = f"_{name}"
-        filename = f"{name}{ext}"
-
-    # 7. Обрезка до 255 байт с сохранением расширения и валидного UTF-8
-    encoded = filename.encode("utf-8")
-    if len(encoded) > _MAX_FILENAME_BYTES:
-        ext_bytes = ext.encode("utf-8")
-        max_name_bytes = _MAX_FILENAME_BYTES - len(ext_bytes)
-        if max_name_bytes <= 0:
-            # Экзотика: расширение само длиннее лимита — режем целиком
-            filename = encoded[:_MAX_FILENAME_BYTES].decode(
-                "utf-8", errors="ignore"
-            )
-        else:
-            name_bytes = name.encode("utf-8")[:max_name_bytes]
-            # errors="ignore" срежет хвостовой битый UTF-8
-            name = name_bytes.decode("utf-8", errors="ignore")
-            filename = f"{name}{ext}"
-
-    # 8. После всех манипуляций имя могло опять стать пустым
-    return filename or fallback
-
-
 # Backward-compatible alias: старое имя для импортов извне модуля.
-# Внутри модуля и в новом коде — звать sanitize_filename напрямую.
+# Сама функция — в strategy.py (общая для стратегий), отсюда её
+# по-прежнему импортируют тесты.
 slugify_filename = sanitize_filename
 
 
@@ -164,6 +71,17 @@ class FileStoreStrategy(StorageStrategyBase):
         """Compute SHA1 checksum of content."""
         return hashlib.sha1(content).hexdigest()
 
+    @staticmethod
+    def _inside_base(base_path: str, path: str) -> str:
+        """Путь, если он внутри файлстора, иначе ValueError. Папка записи
+        приходит из кэша папок (attachment_cache), абсолютный путь в
+        os.path.join отбрасывает base_path — проверяем итог."""
+        base = os.path.realpath(base_path)
+        real = os.path.realpath(path)
+        if real != base and not real.startswith(base + os.sep):
+            raise ValueError(f"Path outside filestore: {path}")
+        return path
+
     async def _get_file_path(
         self,
         storage: "AttachmentStorage",
@@ -176,24 +94,19 @@ class FileStoreStrategy(StorageStrategyBase):
 
         Structure: filestore/<parent_id>/<attachment_id>-<filename>
 
-        Префикс по id записи в ИМЕНИ файла делает путь уникальным по
-        построению: имя задаёт отправитель ("Договор.pdf" шлют все подряд), и
-        без префикса второй файл молча затирал первый. Раньше для этого
-        заводили отдельную подпапку <attachment_id>/ — префикс в имени даёт ту
-        же уникальность без лишнего уровня вложенности. Пользователю имя всё
-        равно отдаётся из базы (attachment.name), а не с диска.
+        Имя файла — storage_name: префикс id записи делает путь уникальным
+        по построению. Раньше для этого заводили отдельную подпапку
+        <attachment_id>/ — префикс в имени даёт ту же уникальность без
+        лишнего уровня вложенности.
         """
         base_path = await self._get_base_path(storage)
-        # Безопасное имя файла (Path Traversal Protection)
-        safe_name = os.path.basename(filename)
 
         parts = [base_path]
         if parent_id:
             parts.append(str(parent_id))
-        # id записи — префиксом к имени файла (а не отдельной подпапкой)
-        parts.append(f"{attachment.id}-{safe_name}")
+        parts.append(self.storage_name(attachment, filename))
 
-        return os.path.join(*parts)
+        return self._inside_base(base_path, os.path.join(*parts))
 
     async def create_file(
         self,
@@ -222,13 +135,12 @@ class FileStoreStrategy(StorageStrategyBase):
         loop = asyncio.get_running_loop()
 
         # 1. Подготовка данных
-        safe_filename = sanitize_filename(os.path.basename(filename))
         checksum = await loop.run_in_executor(
             None, self._compute_checksum, content
         )
 
         file_path = await self._get_file_path(
-            storage, attachment, safe_filename, parent_id
+            storage, attachment, filename, parent_id
         )
         dir_path = os.path.dirname(file_path)
 
@@ -364,14 +276,17 @@ class FileStoreStrategy(StorageStrategyBase):
             checksum = await loop.run_in_executor(
                 None, self._compute_checksum, content
             )
-            new_filename = sanitize_filename(filename or attachment.name)
-            # Build new path
-            new_path = await self._get_file_path(
-                storage,
-                attachment,
-                new_filename,
-                attachment.storage_parent_id,
-            )
+            # Без нового имени — на месте старого файла: путь в базе не
+            # меняется (Attachment.update его не переписывает)
+            if old_path and not filename:
+                new_path = old_path
+            else:
+                new_path = await self._get_file_path(
+                    storage,
+                    attachment,
+                    filename or attachment.name,
+                    attachment.storage_parent_id,
+                )
 
             # Создаем папки и записываем
             await loop.run_in_executor(
@@ -398,10 +313,11 @@ class FileStoreStrategy(StorageStrategyBase):
 
         # If only filename changed (no content), rename
         elif filename and filename != attachment.name and old_path:
-            # Только переименование. Сохраняем префикс id записи в имени файла
-            # (тот же приём уникальности, что и в _get_file_path).
-            new_name = f"{attachment.id}-{sanitize_filename(filename)}"
-            new_path = os.path.join(os.path.dirname(old_path), new_name)
+            # Только переименование, в той же папке и по тому же правилу имени
+            new_path = os.path.join(
+                os.path.dirname(old_path),
+                self.storage_name(attachment, filename),
+            )
             if await aiofiles.os.path.exists(old_path):
                 await aiofiles.os.rename(old_path, new_path)
                 result["storage_file_url"] = new_path
@@ -496,10 +412,10 @@ class FileStoreStrategy(StorageStrategyBase):
         safe_folder_name = sanitize_filename(os.path.basename(folder_name))
 
         if parent_id:
-            # Если parent_id это путь, убеждаемся, что он внутри base_path (опционально, для безопасности)
             folder_path = os.path.join(parent_id, safe_folder_name)
         else:
             folder_path = os.path.join(base_path, safe_folder_name)
+        self._inside_base(base_path, folder_path)
 
         # Создаем директорию асинхронно через executor
         await loop.run_in_executor(

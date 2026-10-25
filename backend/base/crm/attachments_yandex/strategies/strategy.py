@@ -334,7 +334,11 @@ class YandexDiskStrategy(StorageStrategyBase):
         self._log_operation("create_file", attachment, filename=filename)
 
         parent_path = parent_id or self._get_root_path(storage)
-        file_path = self._join_path(parent_path, filename)
+        # Ресурс Яндекса — это его путь: без префикса id (storage_name)
+        # одноимённые файлы одной папки затирали бы друг друга
+        file_path = self._join_path(
+            parent_path, self.storage_name(attachment, filename)
+        )
 
         # Гарантируем, что папка-получатель существует
         await self._ensure_folder_exists(storage, parent_path)
@@ -505,7 +509,9 @@ class YandexDiskStrategy(StorageStrategyBase):
         # Если меняется имя — сначала переименуем (move в той же папке)
         if filename:
             parent = current_path.rsplit("/", 1)[0] or "/"
-            new_path = self._join_path(parent, filename)
+            new_path = self._join_path(
+                parent, self.storage_name(attachment, filename)
+            )
             if new_path != current_path:
                 move_resp = await self._request(
                     storage,

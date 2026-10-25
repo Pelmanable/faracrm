@@ -10,6 +10,7 @@ LibreOffice headless: конвертация офисных документов
 import os
 import pathlib
 import re
+import signal
 import subprocess
 import tempfile
 import threading
@@ -20,6 +21,25 @@ import time
 _RECHECK_SECONDS = 60
 # Конверсия — по одной за раз в процессе (см. convert_to_pdf)
 _LOCK = threading.Lock()
+# Сколько конверсий может быть в процессе вместе с ожидающими: каждая ждёт
+# в потоке общего пула (asyncio.to_thread), и длинная очередь заняла бы
+# потоки, на которых идёт чтение и запись файлов
+_QUEUE = threading.BoundedSemaphore(4)
+_TIMEOUT_SECONDS = 60
+# Документ больше — не конвертируем
+MAX_SOURCE_BYTES = 1024 * 1024 * 1024
+# Окружение LibreOffice: остальное (пароль базы, ключи) документу извне
+# видеть незачем
+_ENV_KEYS = (
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "SYSTEMROOT",
+)
 # (когда проверяли, что нашли) — кэш поиска на процесс
 _probe: tuple[float, tuple[str, str] | None] = (0.0, None)
 
@@ -67,6 +87,19 @@ def libreoffice_info(recheck: bool = False) -> tuple[str, str] | None:
     return info
 
 
+def _kill(proc: subprocess.Popen) -> None:
+    """Убить LibreOffice со всеми детьми: обёртка libreoffice запускает
+    soffice.bin, и kill() одной обёртки оставил бы его держать профиль."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    else:
+        proc.kill()
+    proc.communicate()
+
+
 def convert_to_pdf(content: bytes, suffix: str) -> bytes:
     """Документ → PDF. suffix — расширение файла («.docx», «.odt»…): по нему
     LibreOffice выбирает формат на входе. Синхронно и небыстро — из
@@ -76,45 +109,62 @@ def convert_to_pdf(content: bytes, suffix: str) -> bytes:
         raise RuntimeError(
             "LibreOffice not found. Install: apt install libreoffice-writer"
         )
+    if len(content) > MAX_SOURCE_BYTES:
+        raise RuntimeError("Document is too large for PDF conversion")
+    if not _QUEUE.acquire(blocking=False):
+        raise RuntimeError("PDF conversion is busy, try again later")
 
     # Один профиль на процесс и одна конверсия за раз: два soffice с общим
     # профилем мешают друг другу (второй молча передаёт документ первому и
     # выходит без PDF), а свежий профиль на каждый вызов — это ещё +2 с
-    with _LOCK, tempfile.TemporaryDirectory() as tmpdir:
-        source_path = os.path.join(tmpdir, f"document{suffix}")
-        with open(source_path, "wb") as f:
-            f.write(content)
+    try:
+        with _LOCK, tempfile.TemporaryDirectory() as tmpdir:
+            source_path = os.path.join(tmpdir, f"document{suffix}")
+            with open(source_path, "wb") as f:
+                f.write(content)
 
-        try:
-            result = subprocess.run(
-                [
-                    info[0],
-                    f"-env:UserInstallation={_profile_uri()}",
-                    "--headless",
-                    "--norestore",
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    tmpdir,
-                    source_path,
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=60,
-            )
-            if result.returncode != 0:
-                stderr = result.stderr.decode("utf-8", errors="replace")
+            try:
+                # Своя группа процессов — чтобы по тайм-ауту убить и
+                # soffice.bin (см. _kill)
+                proc = subprocess.Popen(
+                    [
+                        info[0],
+                        f"-env:UserInstallation={_profile_uri()}",
+                        "--headless",
+                        "--norestore",
+                        "--convert-to",
+                        "pdf",
+                        "--outdir",
+                        tmpdir,
+                        source_path,
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env={
+                        k: os.environ[k] for k in _ENV_KEYS if k in os.environ
+                    },
+                    start_new_session=True,
+                )
+            except FileNotFoundError:
+                raise RuntimeError(
+                    "LibreOffice not found. Install: apt install libreoffice-writer"
+                )
+            try:
+                _, stderr = proc.communicate(timeout=_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                _kill(proc)
+                raise RuntimeError(
+                    f"PDF conversion timed out ({_TIMEOUT_SECONDS}s)"
+                )
+            if proc.returncode != 0:
+                stderr = stderr.decode("utf-8", errors="replace")
                 raise RuntimeError(f"LibreOffice error: {stderr}")
-        except FileNotFoundError:
-            raise RuntimeError(
-                "LibreOffice not found. Install: apt install libreoffice-writer"
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("PDF conversion timed out (60s)")
 
-        pdf_path = os.path.join(tmpdir, "document.pdf")
-        if not os.path.exists(pdf_path):
-            raise RuntimeError("PDF not created")
+            pdf_path = os.path.join(tmpdir, "document.pdf")
+            if not os.path.exists(pdf_path):
+                raise RuntimeError("PDF not created")
 
-        with open(pdf_path, "rb") as f:
-            return f.read()
+            with open(pdf_path, "rb") as f:
+                return f.read()
+    finally:
+        _QUEUE.release()
