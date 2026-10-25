@@ -394,7 +394,7 @@ class CRUDRouterGenerator(APIRouter):
 
             await record.update(model_instance, fields_names)
 
-            return _strip_bytes(payload_dict)
+            return payload_dict
 
         return route
 
@@ -416,10 +416,10 @@ class CRUDRouterGenerator(APIRouter):
         ):
             payload_dict = values.model_dump(exclude_unset=True)
             if not ids or not payload_dict:
-                return _strip_bytes(payload_dict)
+                return payload_dict
             model_instance = Model(**payload_dict)
             await Model.update_bulk(ids, model_instance)
-            return _strip_bytes(payload_dict)
+            return payload_dict
 
         return route
 
@@ -638,23 +638,6 @@ def _split_nested_fields(
             names.append(name)
             nested[name] = {"fields": spec} if isinstance(spec, list) else spec
     return names, nested
-
-
-def _strip_bytes(value: Any) -> Any:
-    """
-    Рекурсивно удаляет bytes-значения из dict/list.
-
-    Используется в ответах PUT-роутов, чтобы Pydantic при сериализации в JSON
-    не падал на сырых байтах изображений (которые попадают в payload_dict
-    при апдейте полей PolymorphicMany2one с base64-контентом).
-    """
-    if isinstance(value, dict):
-        return {
-            k: _strip_bytes(v)
-            for k, v in value.items()
-            if not isinstance(v, bytes)
-        }
-    return value
 
 
 def _copy_store_fields(Model: Type[DotModel]) -> list[str]:

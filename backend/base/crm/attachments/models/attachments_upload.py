@@ -131,8 +131,6 @@ class AttachmentUpload(DotModel):
         )
         upload.id = await cls.create(payload=upload)
 
-        # "wb", а не "xb": от пересозданной базы (id снова с 1, файлстор
-        # прежний) мог остаться файл с этим id — обнулить его, а не упасть
         directory = await cls._dir()
         await aiofiles.os.makedirs(directory, exist_ok=True)
         async with aiofiles.open(await upload.path(), mode="wb"):
