@@ -21,7 +21,6 @@ from backend.base.system.dotorm.dotorm.fields import (
     Char,
     PolymorphicMany2one,
     Integer,
-    JSONField,
     Many2many,
     Many2one,
     One2many,
@@ -247,14 +246,6 @@ class User(PolymorphicParentMixin):
         description="Воспроизводить звук уведомлений",
     )
 
-    chat_signatures: list[dict] | None = JSONField(
-        required=False,
-        private=True,
-        role_create=SUPERUSER,
-        role_update=SUPERUSER,
-        description="Личные подписи по коннекторам чата",
-    )
-
     # @hybridmethod
     # async def create(self, payload: Self) -> int:
     #     """Создание пользователя с автоматическим добавлением языков по умолчанию."""
@@ -355,22 +346,6 @@ class User(PolymorphicParentMixin):
     #         )
     #     )
     #     return user_id
-
-    @constrains("chat_signatures")
-    async def _constrains_chat_signatures(self, records: list[Self]) -> None:
-        from backend.base.crm.chat.signatures import validate_settings
-
-        for record in records:
-            try:
-                validate_settings(record.chat_signatures)
-            except ValueError as error:
-                raise FaraException(
-                    {
-                        "content": "CHAT_SIGNATURE_INVALID",
-                        "detail": str(error),
-                        "status_code": 400,
-                    }
-                ) from error
 
     @constrains("login")
     async def _constrains_login_unique(self, records: list[Self]) -> None:

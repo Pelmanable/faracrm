@@ -26,7 +26,6 @@ import {
   IconBook,
   IconMoon,
   IconSun,
-  IconSignature,
 } from '@tabler/icons-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -48,7 +47,6 @@ import { useLayoutTheme } from '@/components/ModernTheme';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useGetPublicConfigQuery } from '@/services/config/config';
 import classes from './UserMenu.module.css';
-import { canUseSignatures } from '@/fara_chat/signatures/access';
 
 const getFlag = (code: string): string => {
   return flags[code.toLowerCase()] || flags['us'];
@@ -306,14 +304,6 @@ function UserMenu() {
           onClick={handleProfile}>
           {t('common:myProfile', 'Мой профиль')}
         </Menu.Item>
-
-        {canUseSignatures(session?.user_id) && (
-          <Menu.Item
-            leftSection={<IconSignature size={16} stroke={1.5} />}
-            onClick={() => navigate('/profile/signatures')}>
-            {t('chat:signatures.title')}
-          </Menu.Item>
-        )}
 
         {/* Язык - подменю */}
         <Menu

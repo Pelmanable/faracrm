@@ -34,9 +34,6 @@ const MarketplaceVendorPage = lazy(
 );
 // Лёгкий профиль для пользователя без base_user (см. UserMenu.handleProfile).
 const ProfilePage = lazy(() => import('@/fara_users/ProfilePage'));
-const SignatureSettingsPage = lazy(
-  () => import('@/fara_chat/signatures/SignatureSettingsPage'),
-);
 // Конструктор шаблона отчёта (модуль report_docx_design: редактор DOCX +
 // поля + превью).
 const ReportDesignerPage = lazy(
@@ -192,7 +189,6 @@ const FaraRouters = () => {
               element={<MarketplaceVendorPage />}
             />
             <Route path="profile" element={<ProfilePage />} />
-            <Route path="profile/signatures" element={<SignatureSettingsPage />} />
             <Route
               path="report_template/:id/design"
               element={<ReportDesignerPage />}

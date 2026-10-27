@@ -1,8 +1,4 @@
 import { useState } from 'react';
-import { useSelector } from 'react-redux';
-import { selectCurrentSession } from '@/slices/authSlice';
-import { SignatureSettings } from '@/fara_chat/signatures/SignatureSettings';
-import { canUseSignatures } from '@/fara_chat/signatures/access';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Form } from '@/components/Form/Form';
@@ -98,9 +94,6 @@ export default function ViewFormUsers(props: ViewFormProps) {
   });
 
   const userId = id ? parseInt(id, 10) : 0;
-  const currentUser = useSelector(selectCurrentSession)?.user_id;
-  const ownSignatures =
-    currentUser?.id === userId && canUseSignatures(currentUser);
 
   const handleCopyUser = (data: {
     name: string;
@@ -221,13 +214,6 @@ export default function ViewFormUsers(props: ViewFormProps) {
               />
             </FormRow>
           </FormTab>
-          {ownSignatures ? (
-            <FormTab name="chat_signatures" label={t('chat:signatures.title')}>
-              <SignatureSettings />
-            </FormTab>
-          ) : (
-            <></>
-          )}
         </FormTabs>
       </Form>
 

@@ -1,8 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box,
-  Button,
-  Modal,
   TextInput,
   ActionIcon,
   Group,
@@ -20,7 +18,6 @@ import {
   IconPhoto,
   IconFile,
   IconX,
-  IconSignature,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
@@ -41,19 +38,14 @@ import { fileMimetype } from '@/hooks/useFileUploads';
 import { EmojiPicker } from './EmojiPicker';
 import { ConnectorSwitcher, ConnectorOption } from './ConnectorSwitcher';
 import { EmailRichInput } from './EmailRichInput';
-import { useGetChatSignaturesQuery } from '../signatures/api';
-import {
-  composeSignedMessage,
-  htmlToText,
-  signatureHasText,
-} from '../signatures/draft';
-import {
-  useMessageDraft,
-  useSignatureDraft,
-} from '../signatures/useSignatureDraft';
-import { SignatureDraft } from '../signatures/SignatureDraft';
-import { SignatureSettings } from '../signatures/SignatureSettings';
 import styles from './ChatInput.module.css';
+
+/** Достать простой текст из HTML — для проверки «пусто ли письмо». */
+function htmlToPlainText(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
 
 // Файл до отправки — в памяти браузера (превью оттуда же); на сервер он уходит
 // частями по «Отправить», как и голосовое
@@ -101,14 +93,7 @@ export function ChatInput({
   taskId,
 }: ChatInputProps) {
   const { t } = useTranslation('chat');
-  const selectedConnector = connectors?.find(
-    c => c.connector_id === connectorId,
-  );
-  const isEmail = selectedConnector?.connector_type === 'email';
-  const isExternal =
-    !!connectorId && selectedConnector?.connector_type !== 'internal';
-  const [message, setMessage] = useMessageDraft(chatId, isEmail, currentUserId);
-  const [signatureSettingsOpened, setSignatureSettingsOpened] = useState(false);
+  const [message, setMessage] = useState('');
   // Тема письма (для email). Дефолт подтягивается из ручки (имя чата или тема
   // последнего письма); пользователь может переопределить.
   const [subject, setSubject] = useState('');
@@ -136,6 +121,12 @@ export function ChatInput({
   // Счётчик для сброса VoiceRecorder после отправки
   const [voiceResetKey, setVoiceResetKey] = useState(0);
 
+  // Выбран ли email-коннектор — тогда показываем rich-редактор письма
+  // (более высокое поле + форматирование), а не однострочный ввод.
+  const selectedConnector = connectors?.find(
+    c => c.connector_id === connectorId,
+  );
+  const isEmail = selectedConnector?.connector_type === 'email';
   // Тип коннектора для оптимистик-рендера (email → HTML сразу).
   const selectedConnectorType = selectedConnector?.connector_type;
 
@@ -156,26 +147,9 @@ export function ChatInput({
   }, [chatId, defaultSubject, isEmail]);
 
   // Есть ли что отправлять (для email проверяем текст письма без HTML-тегов).
-  const hasText = signatureHasText(message, isEmail);
-  const { currentData: signatureSettings } = useGetChatSignaturesQuery(
-    currentUserId,
-    {
-      skip: !currentUserId || !isExternal,
-    },
-  );
-  const signature = useSignatureDraft({
-    userId: currentUserId,
-    chatId,
-    connectorId,
-    setting: signatureSettings?.data.find(
-      item => item.connector_id === connectorId,
-    ),
-    isEmail,
-    hasText,
-    disabled: !!disabled || !!pendingVoice || !isExternal,
-  });
-  const signedMessage = composeSignedMessage(message, signature.body, isEmail);
-  const hasSignedText = signatureHasText(signedMessage, isEmail);
+  const hasText = isEmail
+    ? htmlToPlainText(message).trim().length > 0
+    : message.trim().length > 0;
   // Файл или запись — на сервер частями, в сообщение — его upload_id
   const upload = useCallback(
     async (
@@ -197,7 +171,7 @@ export function ChatInput({
 
   const handleSend = useCallback(async () => {
     // Для письма тело — HTML; иначе обычный текст.
-    const plain = isEmail ? htmlToText(signedMessage) : signedMessage.trim();
+    const plain = isEmail ? htmlToPlainText(message).trim() : message.trim();
 
     // Отправка голосового сообщения
     if (pendingVoice) {
@@ -229,10 +203,7 @@ export function ChatInput({
     // Для email тело — «email-формат» {subject, html} (тема едет внутри body,
     // как system хранит JSON). Для остального — обычный plain-текст.
     const bodyToSend = isEmail
-      ? JSON.stringify({
-          subject: subject.trim(),
-          html: plain ? signedMessage : '',
-        })
+      ? JSON.stringify({ subject: subject.trim(), html: plain ? message : '' })
       : plain || ' ';
 
     setSending(true);
@@ -272,7 +243,6 @@ export function ChatInput({
       }).unwrap();
 
       setMessage('');
-      signature.reset();
       setComposerKey(k => k + 1); // очистить rich-редактор письма
       setAttachments([]);
       inputRef.current?.focus();
@@ -285,9 +255,7 @@ export function ChatInput({
       setProgress({});
     }
   }, [
-    signedMessage,
-    signature.reset,
-    setMessage,
+    message,
     isEmail,
     attachments,
     sending,
@@ -389,36 +357,9 @@ export function ChatInput({
     setAttachments([]);
   };
 
-  const hasContent = hasSignedText || attachments.length > 0 || !!pendingVoice;
+  const hasContent = hasText || attachments.length > 0 || !!pendingVoice;
   // Пока идёт отправка, кнопка видна, но неактивна
   const canSend = hasContent && !sending;
-
-  const signatureButton = isExternal && (
-    <Tooltip
-      label={t(
-        signature.available ? 'signatures.insert' : 'signatures.configure',
-      )}>
-      <span>
-        <Button
-          variant="subtle"
-          size="compact-sm"
-          leftSection={<IconSignature size={16} />}
-          aria-label={t(
-            signature.available ? 'signatures.insert' : 'signatures.configure',
-          )}
-          disabled={
-            disabled || sending || signature.body !== null || !!pendingVoice
-          }
-          onClick={() =>
-            signature.available
-              ? signature.insert()
-              : setSignatureSettingsOpened(true)
-          }>
-          {t('signatures.button')}
-        </Button>
-      </span>
-    </Tooltip>
-  );
 
   // Кнопки, общие для письма и обычного сообщения.
   const attachMenu = (
@@ -539,32 +480,31 @@ export function ChatInput({
       </FileButton>
 
       {isEmail ? (
-        <Box>
-          <TextInput
-            value={subject}
-            onChange={e => setSubject(e.currentTarget.value)}
-            placeholder={t('emailSubject', 'Тема письма')}
-            disabled={disabled}
-            size="sm"
-            mb={6}
-          />
-          <EmailRichInput
-            key={composerKey}
-            initialHtml={message}
-            value={message}
-            onChange={setMessage}
-            onSend={handleSend}
-            disabled={disabled}
-          />
-          <Group justify="space-between" gap="xs" mt="xs">
-            <Group gap="xs">
-              {attachMenu}
-              {signatureButton}
-              {connectorSwitcher}
-            </Group>
-            {sendButton}
-          </Group>
-        </Box>
+        // Письмо — тема (хедер) + rich-редактор (жирный/курсив/списки).
+        // key=composerKey ремонтит редактор после отправки для очистки.
+        // Enter = перенос строки, Ctrl/Cmd+Enter = отправка.
+        <Group gap="xs" wrap="nowrap" align="flex-end">
+          {attachMenu}
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            <TextInput
+              value={subject}
+              onChange={e => setSubject(e.currentTarget.value)}
+              placeholder={t('emailSubject', 'Тема письма')}
+              disabled={disabled}
+              size="sm"
+              mb={6}
+            />
+            <EmailRichInput
+              key={composerKey}
+              initialHtml={message}
+              onChange={setMessage}
+              onSend={handleSend}
+              disabled={disabled}
+            />
+          </Box>
+          {connectorSwitcher}
+          {sendButton}
+        </Group>
       ) : (
         // Как в Telegram: одно закруглённое поле, кнопки внутри него; справа
         // микрофон, пока отправлять нечего, иначе на его месте «Отправить».
@@ -604,11 +544,10 @@ export function ChatInput({
                 disabled={disabled}
               />
               {attachMenu}
-              {signatureButton}
               {connectorSwitcher}
             </Box>
           )}
-          {!hasSignedText && attachments.length === 0 && (
+          {!hasText && attachments.length === 0 && (
             <VoiceRecorder
               key={voiceResetKey}
               onRecorded={handleVoiceRecorded}
@@ -625,30 +564,7 @@ export function ChatInput({
         </Group>
       )}
 
-      {signature.body !== null && (
-        <SignatureDraft
-          body={signature.body}
-          channel={selectedConnector?.connector_name ?? ''}
-          isEmail={isEmail}
-          disabled={disabled || sending}
-          onChange={signature.change}
-          onRemove={signature.remove}
-          onSend={handleSend}
-        />
-      )}
-
       {attachmentViewer.modal}
-      <Modal
-        opened={signatureSettingsOpened}
-        onClose={() => setSignatureSettingsOpened(false)}
-        title={t('signatures.configureTitle')}
-        size="lg">
-        <SignatureSettings
-          key={connectorId}
-          initialConnectorId={connectorId}
-          onSaved={() => setSignatureSettingsOpened(false)}
-        />
-      </Modal>
     </Box>
   );
 }

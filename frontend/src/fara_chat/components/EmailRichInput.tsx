@@ -6,10 +6,9 @@ import Underline from '@tiptap/extension-underline';
 import styles from './EmailRichInput.module.css';
 
 interface EmailRichInputProps {
-  /** Начальное содержимое для неконтролируемого режима. */
+  /** Начальный HTML. Компонент неконтролируемый — чтобы очистить/сбросить,
+   *  родитель меняет `key` (ремонтит редактор с новым initialHtml). */
   initialHtml?: string;
-  value?: string;
-  ariaLabel?: string;
   onChange: (html: string) => void;
   /** Ctrl/Cmd+Enter — отправить (Enter = перенос строки, как в почте). */
   onSend: () => void;
@@ -24,8 +23,6 @@ interface EmailRichInputProps {
  */
 export function EmailRichInput({
   initialHtml = '',
-  value,
-  ariaLabel,
   onChange,
   onSend,
   disabled,
@@ -38,17 +35,13 @@ export function EmailRichInput({
   onChangeRef.current = onChange;
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ link: { openOnClick: false }, underline: false }),
-      Underline,
-    ],
-    content: value ?? initialHtml,
+    extensions: [StarterKit, Underline],
+    content: initialHtml,
     editable: !disabled,
     onUpdate: ({ editor }) => {
       onChangeRef.current(editor.getHTML());
     },
     editorProps: {
-      attributes: ariaLabel ? { 'aria-label': ariaLabel } : {},
       handleKeyDown: (_view, event) => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
           event.preventDefault();
@@ -61,14 +54,8 @@ export function EmailRichInput({
   });
 
   useEffect(() => {
-    editor?.setEditable(!disabled, false);
+    editor?.setEditable(!disabled);
   }, [disabled, editor]);
-
-  useEffect(() => {
-    if (editor && value !== undefined && editor.getHTML() !== value) {
-      editor.commands.setContent(value, { emitUpdate: false });
-    }
-  }, [editor, value]);
 
   if (!editor) return null;
 
@@ -83,10 +70,6 @@ export function EmailRichInput({
         <RichTextEditor.ControlsGroup>
           <RichTextEditor.BulletList />
           <RichTextEditor.OrderedList />
-        </RichTextEditor.ControlsGroup>
-        <RichTextEditor.ControlsGroup>
-          <RichTextEditor.Link />
-          <RichTextEditor.Unlink />
         </RichTextEditor.ControlsGroup>
         <RichTextEditor.ControlsGroup>
           <RichTextEditor.ClearFormatting />
