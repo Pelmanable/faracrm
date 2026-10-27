@@ -19,6 +19,7 @@ import {
   IconCopy,
   IconSettings,
   IconUsers,
+  IconSignature,
 } from '@tabler/icons-react';
 import { FormActions, FormAction } from '@/components/Form/FormActions';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -27,7 +28,7 @@ import { Triplet } from '@/services/api/crudTypes';
 import { useFormContext } from '@/components/Form/FormContext';
 import { Checkbox, Select, Stack, Text, Textarea } from '@mantine/core';
 import { useSearchQuery } from '@/services/api/crudApi';
-import { registerFormTab } from '@/shared/extensions';
+import { registerExtension } from '@/shared/extensions';
 import { EmailRichInput } from '@/fara_chat/components/EmailRichInput';
 import type { ChatSignature } from '@/types/records';
 
@@ -120,6 +121,10 @@ function UserSignaturesTab() {
   );
 }
 
+registerExtension('users', UserSignaturesTab, 'replace:FormTab:signatures', [
+  'chat_signatures',
+]);
+
 // Функция для вычисления фильтра lang_id по lang_ids
 const getLangFilter = (values: Record<string, any>): Triplet[] => {
   const langIdsData = values?.lang_ids;
@@ -174,15 +179,6 @@ function UserFormActions({
 
 export default function ViewFormUsers(props: ViewFormProps) {
   const { t } = useTranslation('users');
-  registerFormTab(
-    'users',
-    {
-      name: 'signatures',
-      label: t('signatures.title'),
-      component: UserSignaturesTab,
-    },
-    ['chat_signatures'],
-  );
   const { id } = useParams<{ id: string }>();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [copyUserOpen, setCopyUserOpen] = useState(false);
@@ -317,6 +313,11 @@ export default function ViewFormUsers(props: ViewFormProps) {
               />
             </FormRow>
           </FormTab>
+          <FormTab
+            name="signatures"
+            label={t('signatures.title')}
+            icon={<IconSignature size={16} />}
+          />
         </FormTabs>
       </Form>
 
