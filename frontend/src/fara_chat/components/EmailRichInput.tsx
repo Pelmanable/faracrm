@@ -1,17 +1,28 @@
 import { useEffect, useRef } from 'react';
 import { RichTextEditor } from '@mantine/tiptap';
-import { useEditor } from '@tiptap/react';
+import { generateHTML, generateJSON, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import styles from './EmailRichInput.module.css';
 
+const extensions = [
+  StarterKit.configure({ link: { openOnClick: false }, underline: false }),
+  Underline,
+];
+
+export function normalizeEmailHtml(html: string): string {
+  // Программная вставка использует ту же схему, что и обычный ввод письма.
+  return generateHTML(generateJSON(html, extensions), extensions);
+}
+
 interface EmailRichInputProps {
-  /** Начальный HTML. Компонент неконтролируемый — чтобы очистить/сбросить,
-   *  родитель меняет `key` (ремонтит редактор с новым initialHtml). */
+  /** Начальное содержимое для неконтролируемого режима. */
   initialHtml?: string;
+  value?: string;
+  ariaLabel?: string;
   onChange: (html: string) => void;
   /** Ctrl/Cmd+Enter — отправить (Enter = перенос строки, как в почте). */
-  onSend: () => void;
+  onSend?: () => void;
   disabled?: boolean;
 }
 
@@ -23,6 +34,8 @@ interface EmailRichInputProps {
  */
 export function EmailRichInput({
   initialHtml = '',
+  value,
+  ariaLabel,
   onChange,
   onSend,
   disabled,
@@ -35,17 +48,18 @@ export function EmailRichInput({
   onChangeRef.current = onChange;
 
   const editor = useEditor({
-    extensions: [StarterKit, Underline],
-    content: initialHtml,
+    extensions,
+    content: value ?? initialHtml,
     editable: !disabled,
     onUpdate: ({ editor }) => {
       onChangeRef.current(editor.getHTML());
     },
     editorProps: {
+      attributes: ariaLabel ? { 'aria-label': ariaLabel } : {},
       handleKeyDown: (_view, event) => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
           event.preventDefault();
-          onSendRef.current();
+          onSendRef.current?.();
           return true;
         }
         return false;
@@ -54,8 +68,20 @@ export function EmailRichInput({
   });
 
   useEffect(() => {
-    editor?.setEditable(!disabled);
+    editor?.setEditable(!disabled, false);
   }, [disabled, editor]);
+
+  useEffect(() => {
+    if (editor && value !== undefined && editor.getHTML() !== value) {
+      const { from, to } = editor.state.selection;
+      editor.commands.setContent(value, { emitUpdate: false });
+      const end = editor.state.doc.content.size - 1;
+      editor.commands.setTextSelection({
+        from: Math.min(from, end),
+        to: Math.min(to, end),
+      });
+    }
+  }, [editor, value]);
 
   if (!editor) return null;
 
@@ -70,6 +96,10 @@ export function EmailRichInput({
         <RichTextEditor.ControlsGroup>
           <RichTextEditor.BulletList />
           <RichTextEditor.OrderedList />
+        </RichTextEditor.ControlsGroup>
+        <RichTextEditor.ControlsGroup>
+          <RichTextEditor.Link />
+          <RichTextEditor.Unlink />
         </RichTextEditor.ControlsGroup>
         <RichTextEditor.ControlsGroup>
           <RichTextEditor.ClearFormatting />

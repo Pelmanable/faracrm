@@ -25,6 +25,100 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import { CopyUserModal } from './CopyUserModal';
 import { Triplet } from '@/services/api/crudTypes';
 import { useFormContext } from '@/components/Form/FormContext';
+import { Checkbox, Select, Stack, Text, Textarea } from '@mantine/core';
+import { useSearchQuery } from '@/services/api/crudApi';
+import { registerFormTab } from '@/shared/extensions';
+import { EmailRichInput } from '@/fara_chat/components/EmailRichInput';
+import type { ChatSignature } from '@/types/records';
+
+function UserSignaturesTab() {
+  const { t } = useTranslation('users');
+  const form = useFormContext();
+  const [signatures, setSignatures] = useState<ChatSignature[]>(
+    () => form.getValues().chat_signatures ?? [],
+  );
+  form.watch('chat_signatures', ({ value }) => setSignatures(value ?? []));
+  const [connectorId, setConnectorId] = useState<string | null>(null);
+  const { data, isLoading, isError } = useSearchQuery({
+    model: 'chat_connector',
+    fields: ['id', 'name', 'type'],
+    filter: [
+      ['type', '!=', 'internal'],
+      ['category', 'in', ['messenger', 'social', 'email']],
+      ['active', '=', true],
+    ],
+    limit: 1000,
+    sort: 'name',
+    order: 'asc',
+  });
+  const connector = data?.data.find(item => String(item.id) === connectorId);
+  const signature = signatures.find(
+    item => String(item.connector_id) === connectorId,
+  );
+  const update = (changes: Partial<ChatSignature>) => {
+    if (!connector) return;
+    const current: ChatSignature[] = form.getValues().chat_signatures ?? [];
+    form.setFieldValue('chat_signatures', [
+      ...current.filter(item => item.connector_id !== Number(connector.id)),
+      {
+        body: '',
+        auto_insert: false,
+        ...current.find(item => item.connector_id === Number(connector.id)),
+        connector_id: Number(connector.id),
+        format: connector.type === 'email' ? 'html' : 'text',
+        ...changes,
+      },
+    ]);
+  };
+
+  return (
+    <Stack gap="sm">
+      <Select
+        label={t('signatures.connector')}
+        placeholder={t('signatures.chooseConnector')}
+        data={
+          data?.data.map(item => ({
+            value: String(item.id),
+            label: item.name,
+          })) ?? []
+        }
+        value={connectorId}
+        onChange={setConnectorId}
+        disabled={isLoading}
+        error={isError ? t('signatures.loadError') : undefined}
+      />
+      {connector && (
+        <>
+          {connector.type === 'email' ? (
+            <EmailRichInput
+              key={connectorId}
+              value={signature?.body ?? ''}
+              onChange={body => update({ body })}
+            />
+          ) : (
+            <Textarea
+              label={t('signatures.body')}
+              value={signature?.body ?? ''}
+              onChange={event => update({ body: event.currentTarget.value })}
+              autosize
+              minRows={3}
+            />
+          )}
+          <Checkbox
+            label={t('signatures.autoInsert')}
+            checked={signature?.auto_insert ?? false}
+            onChange={event =>
+              update({ auto_insert: event.currentTarget.checked })
+            }
+          />
+        </>
+      )}
+      <Text size="sm" c="dimmed">
+        {t('signatures.saveHint')}
+      </Text>
+    </Stack>
+  );
+}
 
 // Функция для вычисления фильтра lang_id по lang_ids
 const getLangFilter = (values: Record<string, any>): Triplet[] => {
@@ -80,6 +174,15 @@ function UserFormActions({
 
 export default function ViewFormUsers(props: ViewFormProps) {
   const { t } = useTranslation('users');
+  registerFormTab(
+    'users',
+    {
+      name: 'signatures',
+      label: t('signatures.title'),
+      component: UserSignaturesTab,
+    },
+    ['chat_signatures'],
+  );
   const { id } = useParams<{ id: string }>();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [copyUserOpen, setCopyUserOpen] = useState(false);

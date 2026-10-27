@@ -344,7 +344,15 @@ export interface ActivityTypeRecord extends BaseRecord {
 // Модели: Users
 // ============================================================
 
+export interface ChatSignature {
+  connector_id: number;
+  body: string;
+  format: 'text' | 'html';
+  auto_insert: boolean;
+}
+
 export interface UserRecord extends BaseRecord {
+  chat_signatures: ChatSignature[] | null;
   name: string;
   login: string;
   email?: string | null;

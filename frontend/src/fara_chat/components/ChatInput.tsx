@@ -1,7 +1,16 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+} from 'react';
 import {
   Box,
+  Button,
   TextInput,
+  Textarea,
   ActionIcon,
   Group,
   FileButton,
@@ -18,6 +27,7 @@ import {
   IconPhoto,
   IconFile,
   IconX,
+  IconSignature,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
@@ -37,14 +47,26 @@ import { useUploadFile } from '@/hooks/useUploadFile';
 import { fileMimetype } from '@/hooks/useFileUploads';
 import { EmojiPicker } from './EmojiPicker';
 import { ConnectorSwitcher, ConnectorOption } from './ConnectorSwitcher';
-import { EmailRichInput } from './EmailRichInput';
+import { EmailRichInput, normalizeEmailHtml } from './EmailRichInput';
+import { useReadQuery } from '@/services/api/crudApi';
+import type { ChatSignature } from '@/types/records';
 import styles from './ChatInput.module.css';
 
 /** Достать простой текст из HTML — для проверки «пусто ли письмо». */
 function htmlToPlainText(html: string): string {
   const div = document.createElement('div');
   div.innerHTML = html;
-  return div.textContent || div.innerText || '';
+  div.querySelectorAll('br').forEach(node => node.replaceWith('\n'));
+  div
+    .querySelectorAll('p, li, blockquote, pre')
+    .forEach(node => node.append('\n'));
+  return (div.textContent || '').trim();
+}
+
+function textToHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return `<p>${div.innerHTML.replace(/\n/g, '<br>')}</p>`;
 }
 
 // Файл до отправки — в памяти браузера (превью оттуда же); на сервер он уходит
@@ -77,7 +99,13 @@ interface ChatInputProps {
 
 const MAX_FILES = 10;
 
-export function ChatInput({
+export function ChatInput(props: ChatInputProps) {
+  return (
+    <ChatComposer key={`${props.currentUserId}:${props.chatId}`} {...props} />
+  );
+}
+
+function ChatComposer({
   chatId,
   currentUserId,
   currentUserName,
@@ -110,7 +138,14 @@ export function ChatInput({
   const [sending, setSending] = useState(false);
   // Процент загрузки файла по _localId — пока идёт отправка
   const [progress, setProgress] = useState<Record<string, number>>({});
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const cursor = useRef<[number, number] | null>(null);
+  useLayoutEffect(() => {
+    if (cursor.current) {
+      inputRef.current?.setSelectionRange(...cursor.current);
+      cursor.current = null;
+    }
+  }, [message]);
   const imageInputRef = useRef<() => void>(null);
   const fileInputRef = useRef<() => void>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -129,6 +164,97 @@ export function ChatInput({
   const isEmail = selectedConnector?.connector_type === 'email';
   // Тип коннектора для оптимистик-рендера (email → HTML сразу).
   const selectedConnectorType = selectedConnector?.connector_type;
+  const isExternal =
+    !!connectorId &&
+    !!selectedConnector &&
+    selectedConnectorType !== 'internal';
+  const { currentData: user } = useReadQuery(
+    { model: 'users', id: currentUserId, fields: ['chat_signatures'] },
+    { skip: !currentUserId || !isExternal, refetchOnMountOrArgChange: true },
+  );
+  const signature = (
+    user?.data.chat_signatures as ChatSignature[] | null
+  )?.find(item => item.connector_id === connectorId);
+  const body = signature?.body ?? '';
+  const signatureBody = useMemo(
+    () =>
+      isEmail
+        ? normalizeEmailHtml(
+            signature?.format === 'html' ? body : textToHtml(body),
+          )
+        : signature?.format === 'html'
+          ? htmlToPlainText(body)
+          : body,
+    [body, isEmail, signature?.format],
+  );
+  const hasSignature = !!(
+    isEmail ? htmlToPlainText(signatureBody) : signatureBody
+  ).trim();
+  const inserted = useRef({ connectorId, isEmail, suffix: '', applied: false });
+  const appendSignature = useCallback(
+    (text: string) => {
+      if (
+        !hasSignature ||
+        (inserted.current.suffix && text.endsWith(inserted.current.suffix))
+      )
+        return text;
+      const head = (isEmail ? htmlToPlainText(text) : text.trim())
+        ? text.trimEnd()
+        : '';
+      if (inputRef.current) {
+        cursor.current = [
+          Math.min(inputRef.current.selectionStart, head.length),
+          Math.min(inputRef.current.selectionEnd, head.length),
+        ];
+      }
+      const suffix =
+        (head ? (isEmail ? '<p></p>' : '\n\n') : '') + signatureBody;
+      inserted.current = { connectorId, isEmail, suffix, applied: true };
+      return head + suffix;
+    },
+    [connectorId, isEmail, hasSignature, signatureBody],
+  );
+
+  useEffect(() => {
+    let next = message;
+    const previous = inserted.current;
+    if (previous.connectorId !== connectorId || previous.isEmail !== isEmail) {
+      const intact = !!previous.suffix && next.endsWith(previous.suffix);
+      if (intact) next = next.slice(0, -previous.suffix.length);
+      if (previous.isEmail !== isEmail && next) {
+        next = isEmail ? textToHtml(next) : htmlToPlainText(next);
+      }
+      // Отредактированный текст сохраняем; автоматически вторую подпись не добавляем.
+      inserted.current = {
+        connectorId,
+        isEmail,
+        suffix: '',
+        applied: previous.applied && !intact && !!next.trim(),
+      };
+    }
+    if (
+      !inserted.current.applied &&
+      signature?.auto_insert &&
+      isExternal &&
+      !disabled &&
+      !sending &&
+      !pendingVoice &&
+      (isEmail ? htmlToPlainText(next) : next.trim())
+    ) {
+      next = appendSignature(next);
+    }
+    if (next !== message) setMessage(next);
+  }, [
+    connectorId,
+    isEmail,
+    message,
+    signature?.auto_insert,
+    isExternal,
+    disabled,
+    sending,
+    pendingVoice,
+    appendSignature,
+  ]);
 
   // Дефолтная тема письма (имя чата / тема последнего письма). Грузим только
   // для email. Подставляем в поле при смене чата/появлении данных; правки
@@ -243,6 +369,7 @@ export function ChatInput({
       }).unwrap();
 
       setMessage('');
+      inserted.current = { connectorId, isEmail, suffix: '', applied: false };
       setComposerKey(k => k + 1); // очистить rich-редактор письма
       setAttachments([]);
       inputRef.current?.focus();
@@ -280,7 +407,7 @@ export function ChatInput({
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
 
     if (onTyping) {
@@ -295,7 +422,11 @@ export function ChatInput({
   };
 
   const handleEmojiSelect = (emoji: string) => {
-    setMessage(prev => prev + emoji);
+    if (disabled || sending) return;
+    const start = inputRef.current?.selectionStart ?? message.length;
+    const end = inputRef.current?.selectionEnd ?? start;
+    cursor.current = [start + emoji.length, start + emoji.length];
+    setMessage(prev => prev.slice(0, start) + emoji + prev.slice(end));
     setEmojiOpened(false);
     inputRef.current?.focus();
   };
@@ -360,6 +491,24 @@ export function ChatInput({
   const hasContent = hasText || attachments.length > 0 || !!pendingVoice;
   // Пока идёт отправка, кнопка видна, но неактивна
   const canSend = hasContent && !sending;
+
+  const signatureButton = isExternal && (
+    <span
+      title={t(
+        hasSignature
+          ? 'users:signatures.insert'
+          : 'users:signatures.configureHint',
+      )}>
+      <Button
+        variant="subtle"
+        size="compact-sm"
+        leftSection={<IconSignature size={16} />}
+        disabled={!hasSignature || disabled || sending || !!pendingVoice}
+        onClick={() => setMessage(appendSignature(message))}>
+        {t('users:signatures.button')}
+      </Button>
+    </span>
+  );
 
   // Кнопки, общие для письма и обычного сообщения.
   const attachMenu = (
@@ -496,12 +645,13 @@ export function ChatInput({
             />
             <EmailRichInput
               key={composerKey}
-              initialHtml={message}
+              value={message}
               onChange={setMessage}
               onSend={handleSend}
-              disabled={disabled}
+              disabled={disabled || sending}
             />
           </Box>
+          {signatureButton}
           {connectorSwitcher}
           {sendButton}
         </Group>
@@ -533,17 +683,21 @@ export function ChatInput({
                   <EmojiPicker onSelect={handleEmojiSelect} />
                 </Popover.Dropdown>
               </Popover>
-              <TextInput
+              <Textarea
                 ref={inputRef}
+                autosize
+                minRows={1}
+                maxRows={8}
                 variant="unstyled"
                 className={styles.input}
                 placeholder={t('typeMessage')}
                 value={message}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
-                disabled={disabled}
+                disabled={disabled || sending}
               />
               {attachMenu}
+              {signatureButton}
               {connectorSwitcher}
             </Box>
           )}

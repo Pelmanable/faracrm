@@ -17,6 +17,7 @@ from backend.base.system.dotorm.dotorm.decorators import (
     hybridmethod,
 )
 from backend.base.system.dotorm.dotorm.fields import (
+    JSONField,
     Boolean,
     Char,
     PolymorphicMany2one,
@@ -244,6 +245,11 @@ class User(PolymorphicParentMixin):
     notification_sound: bool = Boolean(
         default=True,
         description="Воспроизводить звук уведомлений",
+    )
+
+    chat_signatures: list[dict] | None = JSONField(
+        required=False,
+        description="Личные подписи по коннекторам чата",
     )
 
     # @hybridmethod
